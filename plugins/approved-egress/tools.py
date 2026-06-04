@@ -8,7 +8,6 @@ import os
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 from urllib import parse, request
 
 from agno.tools import Toolkit
@@ -61,36 +60,24 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
-def _dedupe_preserving_order(values: list[str]) -> list[str]:
-    return list(dict.fromkeys(values))
-
-
-def _parse_allowlist_text(text: str) -> list[str]:
-    entries: list[str] = []
-    for raw_line in text.splitlines():
-        line = raw_line.split("#", 1)[0].strip()
-        if line:
-            entries.append(line)
-    return _dedupe_preserving_order(entries)
-
-
 def _static_allowlist_entries() -> list[str]:
     inline = os.environ.get("MINDROOM_APPROVED_EGRESS_ALLOWLIST", "").strip()
-    if inline:
-        return _parse_allowlist_text(inline.replace(",", "\n"))
-
-    allowlist_path = (
-        os.environ.get("MINDROOM_APPROVED_EGRESS_ALLOWLIST_PATH")
-        or os.environ.get("MINDROOM_EGRESS_ALLOWLIST_PATH")
-        or DEFAULT_ALLOWLIST_PATH
-    ).strip()
-    if not allowlist_path:
-        return []
-
-    try:
-        return _parse_allowlist_text(Path(allowlist_path).read_text(encoding="utf-8"))
-    except OSError:
-        return []
+    text = inline.replace(",", "\n") if inline else ""
+    if not text:
+        allowlist_path = (
+            os.environ.get("MINDROOM_APPROVED_EGRESS_ALLOWLIST_PATH")
+            or os.environ.get("MINDROOM_EGRESS_ALLOWLIST_PATH")
+            or DEFAULT_ALLOWLIST_PATH
+        ).strip()
+        if allowlist_path:
+            try:
+                text = Path(allowlist_path).read_text(encoding="utf-8")
+            except OSError:
+                text = ""
+    entries = (
+        line for raw in text.splitlines() if (line := raw.split("#", 1)[0].strip())
+    )
+    return list(dict.fromkeys(entries))
 
 
 def _static_allowlist_description() -> str:
@@ -121,7 +108,7 @@ def _request_network_access_description() -> str:
     )
 
 
-def _raw_hostname(value: str) -> str:
+def _canonical_hostname(value: str) -> str:
     if not isinstance(value, str):
         raise ValueError("hostname must be a string")
     raw = value.strip().rstrip(".")
@@ -143,17 +130,10 @@ def _raw_hostname(value: str) -> str:
         raise ValueError("IP literals are not valid egress hostnames")
     if len(raw) > MAX_DNS_NAME_LENGTH:
         raise ValueError("hostname is too long")
-    return raw
-
-
-def _idna_hostname(raw: str) -> str:
     try:
-        return raw.encode("idna").decode("ascii").lower()
+        normalized = raw.encode("idna").decode("ascii").lower()
     except UnicodeError as exc:
         raise ValueError("hostname is not valid IDNA") from exc
-
-
-def _validate_external_hostname(normalized: str) -> None:
     labels = normalized.split(".")
     if len(labels) < MIN_DNS_LABELS:
         raise ValueError("hostname must be a fully-qualified external DNS name")
@@ -172,11 +152,6 @@ def _validate_external_hostname(normalized: str) -> None:
         FORBIDDEN_HOST_SUFFIXES,
     ):
         raise ValueError("hostname points at an internal name")
-
-
-def _canonical_hostname(value: str) -> str:
-    normalized = _idna_hostname(_raw_hostname(value))
-    _validate_external_hostname(normalized)
     return normalized
 
 
@@ -195,21 +170,16 @@ def _static_allowlist_allows(hostname: str) -> bool:
     return False
 
 
-def _is_loopback_api_host(hostname: str) -> bool:
+def _is_plain_http_api_host_allowed(hostname: str) -> bool:
     host = hostname.lower().rstrip(".")
-    if host == "localhost":
+    if host in {"localhost", "mindroom-egress-proxy"}:
+        return True
+    if host.endswith((".svc", ".svc.cluster.local")):
         return True
     try:
         return ipaddress.ip_address(host).is_loopback
     except ValueError:
         return False
-
-
-def _is_cluster_api_host(hostname: str) -> bool:
-    host = hostname.lower().rstrip(".")
-    return host == "mindroom-egress-proxy" or host.endswith(
-        (".svc", ".svc.cluster.local"),
-    )
 
 
 def _policy_api_url() -> str:
@@ -233,9 +203,7 @@ def _policy_api_url() -> str:
             "query, or fragment",
         )
     hostname = parsed.hostname or ""
-    if parsed.scheme == "http" and not (
-        _is_loopback_api_host(hostname) or _is_cluster_api_host(hostname)
-    ):
+    if parsed.scheme == "http" and not _is_plain_http_api_host_allowed(hostname):
         raise RuntimeError(
             "plain HTTP approved egress policy API URLs must use loopback or an "
             "in-cluster service name",
@@ -312,7 +280,7 @@ class _NoRedirectHandler(request.HTTPRedirectHandler):
 _NO_REDIRECT_OPENER = request.build_opener(_NoRedirectHandler)
 
 
-def _post_grant(payload: dict[str, object]) -> dict[str, Any]:
+def _post_grant(payload: dict[str, object]) -> dict[str, object]:
     body = json.dumps(payload, sort_keys=True).encode("utf-8")
     req = request.Request(  # noqa: S310 - _policy_api_url validates scheme and host.
         f"{_policy_api_url()}/grants",
