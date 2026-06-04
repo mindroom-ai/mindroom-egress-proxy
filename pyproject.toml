@@ -1,6 +1,6 @@
 [project]
 name = "mindroom-approved-egress-proxy"
-version = "0.1.1"
+dynamic = ["version"]
 description = "Network firewall and approval proxy for MindRoom worker internet access"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -18,7 +18,7 @@ dependencies = [
 mindroom-egress-proxy = "mindroom_egress_proxy.cli:main"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [dependency-groups]
@@ -35,6 +35,10 @@ testpaths = ["tests"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mindroom_egress_proxy"]
+
+[tool.hatch.version]
+source = "vcs"
+fallback-version = "0.1.1"
 
 [tool.ruff]
 target-version = "py313"
