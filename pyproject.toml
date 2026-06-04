@@ -1,6 +1,6 @@
 [project]
 name = "mindroom-approved-egress-proxy"
-version = "0.1.0"
+version = "0.1.1"
 description = "Network firewall and approval proxy for MindRoom worker internet access"
 readme = "README.md"
 requires-python = ">=3.13"
