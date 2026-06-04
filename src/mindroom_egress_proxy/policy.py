@@ -96,6 +96,7 @@ class EgressPolicy:
             host,
             worker_key=identity.worker_key,
             agent_name=identity.agent_name,
+            allow_agent_grants=identity.worker_scope in {"shared", "unscoped"},
         ):
             return True, "dynamic grant", addresses[0]
         return False, "hostname is not approved for this worker", None

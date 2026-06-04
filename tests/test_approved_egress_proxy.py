@@ -50,6 +50,18 @@ class TestHostnameValidation:
             with pytest.raises(ValueError):
                 hostnames.canonical_hostname(value)
 
+    def test_canonical_hostname_rejects_overlong_raw_name_before_idna(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def fail_idna_encode(*_args, **_kwargs):
+            raise AssertionError("IDNA encoding should not run for overlong input")
+
+        monkeypatch.setattr(hostnames.idna, "encode", fail_idna_encode)
+
+        with pytest.raises(ValueError, match="hostname is too long"):
+            hostnames.canonical_hostname(("a" * 254) + ".example")
+
     def test_forbidden_resolved_addresses_include_private_and_metadata_ranges(
         self,
     ) -> None:
@@ -291,18 +303,21 @@ class TestGrantStore:
                 "python.org",
                 worker_key="worker",
                 agent_name="assistant",
+                allow_agent_grants=True,
                 now=now + 1,
             )
             assert not store.has_grant(
                 "python.org",
                 worker_key="worker",
                 agent_name="other",
+                allow_agent_grants=True,
                 now=now + 1,
             )
             assert not store.has_grant(
                 "python.org",
                 worker_key="worker",
                 agent_name="assistant",
+                allow_agent_grants=True,
                 now=now + 11,
             )
 
@@ -366,6 +381,49 @@ class TestKubernetesWorkerResolver:
         assert identity.agent_name == "assistant"
         assert core_api.field_selector == "status.podIP=10.0.0.10"
         assert apps_api.name == "worker-deployment"
+
+    def test_resolver_default_does_not_reuse_source_ip_identity(self) -> None:
+        class CoreApi:
+            worker_id = "worker-one"
+
+            def list_namespaced_pod(self, *, namespace: str, field_selector: str):
+                return SimpleNamespace(
+                    items=[
+                        SimpleNamespace(
+                            metadata=SimpleNamespace(
+                                labels={WORKER_ID_LABEL: self.worker_id},
+                            ),
+                        ),
+                    ],
+                )
+
+        class AppsApi:
+            def read_namespaced_deployment(self, *, name: str, namespace: str):
+                worker_keys = {
+                    "worker-one": "v1:default:user_agent:@alice:server:assistant",
+                    "worker-two": "v1:default:user_agent:@bob:server:assistant",
+                }
+                return SimpleNamespace(
+                    metadata=SimpleNamespace(
+                        annotations={WORKER_KEY_ANNOTATION: worker_keys[name]},
+                    ),
+                )
+
+        core_api = CoreApi()
+        resolver = workers.KubernetesWorkerResolver(
+            namespace="default",
+            core_api=core_api,
+            apps_api=AppsApi(),
+        )
+
+        first = resolver.resolve("10.0.0.10")
+        core_api.worker_id = "worker-two"
+        second = resolver.resolve("10.0.0.10")
+
+        assert first is not None
+        assert second is not None
+        assert first.worker_key == "v1:default:user_agent:@alice:server:assistant"
+        assert second.worker_key == "v1:default:user_agent:@bob:server:assistant"
 
 
 class TestPolicyApi:

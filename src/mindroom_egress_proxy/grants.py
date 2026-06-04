@@ -236,6 +236,7 @@ class GrantStore:
         *,
         worker_key: str | None,
         agent_name: str | None,
+        allow_agent_grants: bool = False,
         now: int | None = None,
     ) -> bool:
         host = canonical_hostname(hostname)
@@ -261,6 +262,7 @@ class GrantStore:
                 return True
             if (
                 subject_type == "agent"
+                and allow_agent_grants
                 and agent_name is not None
                 and subject == agent_name
             ):

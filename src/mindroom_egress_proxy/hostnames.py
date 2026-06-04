@@ -43,6 +43,8 @@ def _raw_hostname(value: str) -> str:
         pass
     else:
         raise ValueError("IP literals are not valid dynamic egress hostnames")
+    if len(raw) > MAX_DNS_NAME_LENGTH:
+        raise ValueError("hostname is too long")
     return raw
 
 

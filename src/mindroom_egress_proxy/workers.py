@@ -22,12 +22,19 @@ from mindroom_egress_proxy.constants import (
 logger = logging.getLogger(__name__)
 
 
-def worker_key_agent_name(worker_key: str) -> str | None:
-    """Return encoded agent name for shared, user_agent, or unscoped worker keys."""
+def worker_key_scope(worker_key: str) -> str | None:
     parts = worker_key.split(":")
     if len(parts) < WORKER_KEY_MIN_PARTS or parts[0] != "v1":
         return None
-    scope = parts[2]
+    return parts[2]
+
+
+def worker_key_agent_name(worker_key: str) -> str | None:
+    """Return encoded agent name for shared, user_agent, or unscoped worker keys."""
+    parts = worker_key.split(":")
+    scope = worker_key_scope(worker_key)
+    if scope is None:
+        return None
     if scope in {"shared", "unscoped"}:
         return parts[3]
     if scope == "user_agent" and len(parts) >= USER_AGENT_WORKER_KEY_MIN_PARTS:
@@ -41,6 +48,18 @@ class WorkerIdentity:
 
     worker_key: str
     agent_name: str | None
+    worker_scope: str | None = None
+
+    def __post_init__(self) -> None:
+        """Fill derived identity fields for direct test or caller construction."""
+        if self.agent_name is None:
+            object.__setattr__(
+                self,
+                "agent_name",
+                worker_key_agent_name(self.worker_key),
+            )
+        if self.worker_scope is None:
+            object.__setattr__(self, "worker_scope", worker_key_scope(self.worker_key))
 
 
 class KubernetesWorkerResolver:
@@ -117,4 +136,5 @@ class KubernetesWorkerResolver:
         return WorkerIdentity(
             worker_key=worker_key,
             agent_name=worker_key_agent_name(worker_key),
+            worker_scope=worker_key_scope(worker_key),
         )

@@ -90,6 +90,96 @@ def test_policy_allows_dynamic_grant_for_resolved_worker(
     assert connect_address == "93.184.216.34"
 
 
+def test_policy_denies_agent_grant_for_user_agent_worker(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setattr(
+        hostnames,
+        "_resolved_addresses",
+        lambda _hostname: {"93.184.216.34"},
+    )
+    store = GrantStore(tmp_path / "grants.sqlite3")
+    store.create_grant(
+        hostname="docs.example.com",
+        subject_type="agent",
+        subject="assistant",
+        agent_name="assistant",
+        requester_id="@alice:server",
+        room_id="!room:server",
+        thread_id=None,
+        ttl_seconds=300,
+        approved_by="@alice:server",
+        reason="Need docs",
+        now=int(time.time()),
+    )
+    policy = EgressPolicy(
+        static_allowlist=StaticAllowlist.from_lines([]),
+        grant_store=store,
+        worker_resolver=StaticWorkerResolver(
+            WorkerIdentity(
+                worker_key="v1:default:user_agent:@bob:server:assistant",
+                agent_name="assistant",
+            ),
+        ),
+    )
+
+    allowed, reason, connect_address = policy.is_allowed(
+        source_ip="10.0.0.12",
+        hostname="docs.example.com",
+        port=443,
+    )
+
+    assert not allowed
+    assert reason == "hostname is not approved for this worker"
+    assert connect_address is None
+
+
+def test_policy_allows_agent_grant_for_shared_worker(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setattr(
+        hostnames,
+        "_resolved_addresses",
+        lambda _hostname: {"93.184.216.34"},
+    )
+    store = GrantStore(tmp_path / "grants.sqlite3")
+    store.create_grant(
+        hostname="docs.example.com",
+        subject_type="agent",
+        subject="assistant",
+        agent_name="assistant",
+        requester_id="@alice:server",
+        room_id="!room:server",
+        thread_id=None,
+        ttl_seconds=300,
+        approved_by="@alice:server",
+        reason="Need docs",
+        now=int(time.time()),
+    )
+    policy = EgressPolicy(
+        static_allowlist=StaticAllowlist.from_lines([]),
+        grant_store=store,
+        worker_resolver=StaticWorkerResolver(
+            WorkerIdentity(
+                worker_key="v1:default:shared:assistant",
+                agent_name="assistant",
+            ),
+        ),
+    )
+
+    allowed, reason, connect_address = policy.is_allowed(
+        source_ip="10.0.0.12",
+        hostname="docs.example.com",
+        port=443,
+    )
+
+    assert allowed
+    assert reason == "dynamic grant"
+    assert connect_address == "93.184.216.34"
+
+
 def test_policy_denies_dynamic_hostname_when_worker_identity_is_missing(
     monkeypatch,
     tmp_path,
