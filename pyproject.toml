@@ -1,0 +1,72 @@
+[project]
+name = "mindroom-approved-egress-proxy"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "dnspython>=2.8.0",
+    "fastapi>=0.136.1",
+    "idna>=3.13",
+    "kubernetes>=35.0.0",
+    "pydantic>=2.13.3",
+    "pydantic-settings>=2.14.0",
+    "uvicorn>=0.46.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "ruff>=0.15.0",
+]
+
+[tool.ruff]
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    # Ruff formatter owns trailing comma and implicit string concat choices.
+    "COM812",
+    "ISC001",
+    # Pydocstyle has mutually exclusive defaults unless a convention is selected.
+    "D203",
+    "D213",
+    # This is a standalone container script, not a Python package.
+    "INP001",
+    # This service has explicit API/store boundaries with several payload fields.
+    "PLR0913",
+    # Guard-style policy code is clearer with direct return decisions.
+    "PLR0911",
+    # FastAPI's default dependency style preserves auth-before-body-validation here.
+    "FAST002",
+    # Public names are internal to this script; keep docstrings where they clarify.
+    "D102",
+    "D103",
+    "D107",
+    # The API intentionally returns concrete validation messages to callers.
+    "EM101",
+    "EM102",
+    "TRY003",
+    "TRY004",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"test_*.py" = [
+    # Tests are written with unittest because they run with stdlib unittest.
+    "PT",
+    # Test names already document behavior; method/class docstrings add noise.
+    "D",
+    # Fake tokens and compact test constants are intentional.
+    "PLR2004",
+    "S105",
+    "S106",
+    "S108",
+    # Tests monkeypatch private helpers to avoid real DNS/Kubernetes calls.
+    "SLF001",
+    # Some test doubles intentionally accept unused interface arguments.
+    "ARG002",
+    "ARG005",
+    # Full-width/IDNA examples are the point of the hostname normalization tests.
+    "RUF001",
+    # Inner test doubles stay lightweight.
+    "ANN",
+]

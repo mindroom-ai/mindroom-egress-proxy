@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+export PYTHONPATH="/app/.venv/lib/python3.13/site-packages${PYTHONPATH:+:${PYTHONPATH}}"
+exec /usr/local/bin/python /app/approved_egress_proxy.py helper
