@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-mindroom-egress-proxy = "mindroom_egress_proxy.server:main"
+mindroom-egress-proxy = "mindroom_egress_proxy.cli:main"
 
 [build-system]
 requires = ["hatchling"]

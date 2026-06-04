@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import importlib.util
+
 from mindroom_egress_proxy import (
     api,
     cli,
@@ -23,3 +25,7 @@ def test_package_has_real_module_boundaries() -> None:
     assert settings.RuntimeSettings is not None
     assert squid.evaluate_squid_acl_request is not None
     assert workers.KubernetesWorkerResolver is not None
+
+
+def test_package_does_not_ship_compatibility_facade() -> None:
+    assert importlib.util.find_spec("mindroom_egress_proxy.server") is None

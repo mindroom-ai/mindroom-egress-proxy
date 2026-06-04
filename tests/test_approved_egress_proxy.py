@@ -11,20 +11,26 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-import mindroom_egress_proxy.server as egress
-from mindroom_egress_proxy import hostnames
+from mindroom_egress_proxy import api, grants, hostnames, settings, squid, workers
+from mindroom_egress_proxy.constants import (
+    DEFAULT_PROXY_PORT,
+    MAX_REASON_CHARS,
+    WORKER_ID_LABEL,
+    WORKER_KEY_ANNOTATION,
+)
+from mindroom_egress_proxy.policy import StaticAllowlist
 
 
 class TestHostnameValidation:
     def test_canonical_hostname_accepts_exact_dns_names(self) -> None:
-        assert egress.canonical_hostname("GitHub.COM") == "github.com"
-        assert egress.canonical_hostname("api.github.com.") == "api.github.com"
+        assert hostnames.canonical_hostname("GitHub.COM") == "github.com"
+        assert hostnames.canonical_hostname("api.github.com.") == "api.github.com"
 
     def test_canonical_hostname_uses_idna2008_uts46_normalization(self) -> None:
-        assert egress.canonical_hostname("faß.de") == "xn--fa-hia.de"
-        assert egress.canonical_hostname("Ｆｏｏ.example") == "foo.example"
+        assert hostnames.canonical_hostname("faß.de") == "xn--fa-hia.de"
+        assert hostnames.canonical_hostname("Ｆｏｏ.example") == "foo.example"
         with pytest.raises(ValueError):
-            egress.canonical_hostname("☃.example")
+            hostnames.canonical_hostname("☃.example")
 
     def test_canonical_hostname_rejects_urls_ports_wildcards_and_internal_names(
         self,
@@ -42,7 +48,7 @@ class TestHostnameValidation:
         ]
         for value in rejected:
             with pytest.raises(ValueError):
-                egress.canonical_hostname(value)
+                hostnames.canonical_hostname(value)
 
     def test_forbidden_resolved_addresses_include_private_and_metadata_ranges(
         self,
@@ -54,24 +60,24 @@ class TestHostnameValidation:
             "192.168.1.1",
             "169.254.169.254",
         ):
-            assert egress.is_forbidden_resolved_address(value)
-        assert not egress.is_forbidden_resolved_address("8.8.8.8")
+            assert hostnames.is_forbidden_resolved_address(value)
+        assert not hostnames.is_forbidden_resolved_address("8.8.8.8")
 
     def test_public_resolved_addresses_rejects_mixed_private_results(self) -> None:
         original = hostnames._resolved_addresses
         try:
             hostnames._resolved_addresses = lambda hostname: {"8.8.8.8", "10.0.0.5"}
-            with pytest.raises(egress.PolicyError):
-                egress._public_resolved_addresses("example.com")
+            with pytest.raises(hostnames.PolicyError):
+                hostnames._public_resolved_addresses("example.com")
         finally:
             hostnames._resolved_addresses = original
 
     def test_reason_values_are_normalized_and_limited(self) -> None:
         reason = "  Need\n\tAPI docs\x00for validation  " + ("x" * 600)
 
-        normalized = egress.normalize_reason(reason)
+        normalized = hostnames.normalize_reason(reason)
 
-        assert len(normalized) <= egress.MAX_REASON_CHARS
+        assert len(normalized) <= MAX_REASON_CHARS
         assert "\n" not in normalized
         assert "\t" not in normalized
         assert "\x00" not in normalized
@@ -84,11 +90,11 @@ class TestHostnameValidation:
             os.environ["MINDROOM_SANDBOX_PROXY_TOKEN"] = "fallback-token"
 
             with pytest.raises(ValueError):
-                egress.RuntimeSettings()
+                settings.RuntimeSettings()
 
             os.environ["MINDROOM_APPROVED_EGRESS_TOKEN"] = "approved-token"
             assert (
-                egress.RuntimeSettings().bearer_token.get_secret_value()
+                settings.RuntimeSettings().bearer_token.get_secret_value()
                 == "approved-token"
             )
         finally:
@@ -98,7 +104,7 @@ class TestHostnameValidation:
 
 class TestStaticAllowlist:
     def test_leading_dot_allows_domain_and_subdomains(self) -> None:
-        allowlist = egress.StaticAllowlist.from_lines(
+        allowlist = StaticAllowlist.from_lines(
             [".github.com", "exact.example.com"],
         )
 
@@ -113,7 +119,7 @@ class TestSquidAclHelper:
     def test_squid_command_runs_with_config_in_foreground(self) -> None:
         settings = SimpleNamespace(squid_config_path="/tmp/squid.conf")
 
-        assert egress.squid_command(settings) == [
+        assert squid.squid_command(settings) == [
             "squid",
             "-N",
             "-f",
@@ -128,7 +134,7 @@ class TestSquidAclHelper:
 
         policy = Policy()
 
-        result = egress.evaluate_squid_acl_request(
+        result = squid.evaluate_squid_acl_request(
             "10.4.0.12 Example.COM 443 CONNECT",
             policy,
         )
@@ -141,7 +147,7 @@ class TestSquidAclHelper:
             def is_allowed(self, *, source_ip: str, hostname: str, port: int):
                 return False, "hostname is not approved for this worker", None
 
-        result = egress.evaluate_squid_acl_request(
+        result = squid.evaluate_squid_acl_request(
             "10.4.0.12 example.com 443 CONNECT",
             Policy(),
         )
@@ -158,13 +164,13 @@ class TestSquidAclHelper:
             "10.4.0.12 example.com",
             "10.4.0.12 example.com not-a-port CONNECT",
         ):
-            result = egress.evaluate_squid_acl_request(value, Policy())
+            result = squid.evaluate_squid_acl_request(value, Policy())
             assert result.startswith("ERR message=")
 
 
 class TestGrantRequestValidation:
     def test_grant_create_request_normalizes_strings_and_hostname(self) -> None:
-        payload = egress.GrantCreateRequest.model_validate(
+        payload = grants.GrantCreateRequest.model_validate(
             {
                 "hostname": "FAß.DE.",
                 "subject_type": "worker_key",
@@ -186,9 +192,9 @@ class TestGrantRequestValidation:
             "ttl_seconds": 300,
         }
         with pytest.raises(ValueError):
-            egress.GrantCreateRequest.model_validate({**base, "subject_type": "user"})
+            grants.GrantCreateRequest.model_validate({**base, "subject_type": "user"})
         with pytest.raises(ValueError):
-            egress.GrantCreateRequest.model_validate({**base, "ttl_seconds": 0})
+            grants.GrantCreateRequest.model_validate({**base, "ttl_seconds": 0})
 
 
 class TestRuntimeSettings:
@@ -201,10 +207,10 @@ class TestRuntimeSettings:
             os.environ["MINDROOM_APPROVED_EGRESS_TOKEN"] = "token"
             os.environ["MINDROOM_EGRESS_NAMESPACE"] = "custom"
 
-            settings = egress.RuntimeSettings()
+            runtime_settings = settings.RuntimeSettings()
 
-            assert settings.namespace == "custom"
-            assert settings.bearer_token.get_secret_value() == "token"
+            assert runtime_settings.namespace == "custom"
+            assert runtime_settings.bearer_token.get_secret_value() == "token"
         finally:
             os.environ.clear()
             os.environ.update(old_environ)
@@ -216,9 +222,9 @@ class TestRuntimeSettings:
             os.environ["MINDROOM_APPROVED_EGRESS_TOKEN"] = "token"
             os.environ["MINDROOM_EGRESS_PROXY_PORT"] = "tcp://34.118.227.158:3128"
 
-            settings = egress.RuntimeSettings()
+            runtime_settings = settings.RuntimeSettings()
 
-            assert settings.proxy_port == egress.DEFAULT_PROXY_PORT
+            assert runtime_settings.proxy_port == DEFAULT_PROXY_PORT
         finally:
             os.environ.clear()
             os.environ.update(old_environ)
@@ -227,7 +233,7 @@ class TestRuntimeSettings:
 class TestGrantStore:
     def test_worker_key_grants_are_exact_host_and_subject_matches(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            store = egress.GrantStore(Path(tmpdir) / "grants.sqlite3")
+            store = grants.GrantStore(Path(tmpdir) / "grants.sqlite3")
             now = int(time.time())
             grant = store.create_grant(
                 hostname="api.github.com",
@@ -265,7 +271,7 @@ class TestGrantStore:
 
     def test_agent_grants_match_agent_name_until_expiry(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            store = egress.GrantStore(Path(tmpdir) / "grants.sqlite3")
+            store = grants.GrantStore(Path(tmpdir) / "grants.sqlite3")
             now = int(time.time())
             store.create_grant(
                 hostname="python.org",
@@ -304,15 +310,15 @@ class TestGrantStore:
 class TestWorkerKeyParsing:
     def test_worker_key_agent_name_parses_shared_and_user_agent_scopes(self) -> None:
         assert (
-            egress.worker_key_agent_name("v1:default:shared:assistant") == "assistant"
+            workers.worker_key_agent_name("v1:default:shared:assistant") == "assistant"
         )
         assert (
-            egress.worker_key_agent_name(
+            workers.worker_key_agent_name(
                 "v1:default:user_agent:@user:server:assistant",
             )
             == "assistant"
         )
-        assert egress.worker_key_agent_name("v1:default:user:@user:server") is None
+        assert workers.worker_key_agent_name("v1:default:user:@user:server") is None
 
 
 class TestKubernetesWorkerResolver:
@@ -325,7 +331,7 @@ class TestKubernetesWorkerResolver:
                     items=[
                         SimpleNamespace(
                             metadata=SimpleNamespace(
-                                labels={egress.WORKER_ID_LABEL: "worker-deployment"},
+                                labels={WORKER_ID_LABEL: "worker-deployment"},
                             ),
                         ),
                     ],
@@ -338,7 +344,7 @@ class TestKubernetesWorkerResolver:
                 return SimpleNamespace(
                     metadata=SimpleNamespace(
                         annotations={
-                            egress.WORKER_KEY_ANNOTATION: (
+                            WORKER_KEY_ANNOTATION: (
                                 "v1:default:user_agent:@user:server:assistant"
                             ),
                         },
@@ -347,7 +353,7 @@ class TestKubernetesWorkerResolver:
 
         core_api = CoreApi()
         apps_api = AppsApi()
-        resolver = egress.KubernetesWorkerResolver(
+        resolver = workers.KubernetesWorkerResolver(
             namespace="default",
             core_api=core_api,
             apps_api=apps_api,
@@ -365,8 +371,8 @@ class TestKubernetesWorkerResolver:
 class TestPolicyApi:
     def test_fastapi_policy_api_creates_grants_with_pydantic_validation(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            store = egress.GrantStore(Path(tmpdir) / "grants.sqlite3")
-            app = egress.create_policy_api_app(
+            store = grants.GrantStore(Path(tmpdir) / "grants.sqlite3")
+            app = api.create_policy_api_app(
                 grant_store=store,
                 bearer_token="token",
                 max_ttl_seconds=60,

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import time
 
-import mindroom_egress_proxy.server as egress
 from mindroom_egress_proxy import hostnames
+from mindroom_egress_proxy.grants import GrantStore
+from mindroom_egress_proxy.policy import EgressPolicy, StaticAllowlist
+from mindroom_egress_proxy.workers import WorkerIdentity
 
 
 class NoWorkerResolver:
@@ -12,10 +14,10 @@ class NoWorkerResolver:
 
 
 class StaticWorkerResolver:
-    def __init__(self, identity: egress.WorkerIdentity) -> None:
+    def __init__(self, identity: WorkerIdentity) -> None:
         self.identity = identity
 
-    def resolve(self, source_ip: str) -> egress.WorkerIdentity:
+    def resolve(self, source_ip: str) -> WorkerIdentity:
         return self.identity
 
 
@@ -28,9 +30,9 @@ def test_policy_allows_static_allowlist_without_worker_identity(
         "_resolved_addresses",
         lambda _hostname: {"93.184.216.34"},
     )
-    policy = egress.EgressPolicy(
-        static_allowlist=egress.StaticAllowlist.from_lines([".example.com"]),
-        grant_store=egress.GrantStore(tmp_path / "grants.sqlite3"),
+    policy = EgressPolicy(
+        static_allowlist=StaticAllowlist.from_lines([".example.com"]),
+        grant_store=GrantStore(tmp_path / "grants.sqlite3"),
         worker_resolver=NoWorkerResolver(),
     )
 
@@ -55,7 +57,7 @@ def test_policy_allows_dynamic_grant_for_resolved_worker(
         lambda _hostname: {"93.184.216.34"},
     )
     worker_key = "v1:default:user_agent:@user:server:assistant"
-    store = egress.GrantStore(tmp_path / "grants.sqlite3")
+    store = GrantStore(tmp_path / "grants.sqlite3")
     store.create_grant(
         hostname="docs.example.com",
         subject_type="worker_key",
@@ -69,11 +71,11 @@ def test_policy_allows_dynamic_grant_for_resolved_worker(
         reason="Need docs",
         now=int(time.time()),
     )
-    policy = egress.EgressPolicy(
-        static_allowlist=egress.StaticAllowlist.from_lines([]),
+    policy = EgressPolicy(
+        static_allowlist=StaticAllowlist.from_lines([]),
         grant_store=store,
         worker_resolver=StaticWorkerResolver(
-            egress.WorkerIdentity(worker_key=worker_key, agent_name="assistant"),
+            WorkerIdentity(worker_key=worker_key, agent_name="assistant"),
         ),
     )
 
@@ -97,9 +99,9 @@ def test_policy_denies_dynamic_hostname_when_worker_identity_is_missing(
         "_resolved_addresses",
         lambda _hostname: {"93.184.216.34"},
     )
-    policy = egress.EgressPolicy(
-        static_allowlist=egress.StaticAllowlist.from_lines([]),
-        grant_store=egress.GrantStore(tmp_path / "grants.sqlite3"),
+    policy = EgressPolicy(
+        static_allowlist=StaticAllowlist.from_lines([]),
+        grant_store=GrantStore(tmp_path / "grants.sqlite3"),
         worker_resolver=NoWorkerResolver(),
     )
 
