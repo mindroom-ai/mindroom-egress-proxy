@@ -2,42 +2,27 @@
 
 from __future__ import annotations
 
-import importlib.util
 import os
-import sys
 import tempfile
 import time
-import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from fastapi.testclient import TestClient
 
-MODULE_PATH = Path(__file__).with_name("approved_egress_proxy.py")
+import mindroom_egress_proxy.server as egress
 
 
-def _load_module():
-    spec = importlib.util.spec_from_file_location("approved_egress_proxy", MODULE_PATH)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Could not load {MODULE_PATH}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-egress = _load_module()
-
-
-class HostnameValidationTests(unittest.TestCase):
+class TestHostnameValidation:
     def test_canonical_hostname_accepts_exact_dns_names(self) -> None:
-        self.assertEqual(egress.canonical_hostname("GitHub.COM"), "github.com")
-        self.assertEqual(egress.canonical_hostname("api.github.com."), "api.github.com")
+        assert egress.canonical_hostname("GitHub.COM") == "github.com"
+        assert egress.canonical_hostname("api.github.com.") == "api.github.com"
 
     def test_canonical_hostname_uses_idna2008_uts46_normalization(self) -> None:
-        self.assertEqual(egress.canonical_hostname("faß.de"), "xn--fa-hia.de")
-        self.assertEqual(egress.canonical_hostname("Ｆｏｏ.example"), "foo.example")
-        with self.assertRaises(ValueError):
+        assert egress.canonical_hostname("faß.de") == "xn--fa-hia.de"
+        assert egress.canonical_hostname("Ｆｏｏ.example") == "foo.example"
+        with pytest.raises(ValueError):
             egress.canonical_hostname("☃.example")
 
     def test_canonical_hostname_rejects_urls_ports_wildcards_and_internal_names(
@@ -55,7 +40,7 @@ class HostnameValidationTests(unittest.TestCase):
             "service.default.svc.cluster.local",
         ]
         for value in rejected:
-            with self.subTest(value=value), self.assertRaises(ValueError):
+            with pytest.raises(ValueError):
                 egress.canonical_hostname(value)
 
     def test_forbidden_resolved_addresses_include_private_and_metadata_ranges(
@@ -68,15 +53,14 @@ class HostnameValidationTests(unittest.TestCase):
             "192.168.1.1",
             "169.254.169.254",
         ):
-            with self.subTest(value=value):
-                self.assertTrue(egress.is_forbidden_resolved_address(value))
-        self.assertFalse(egress.is_forbidden_resolved_address("8.8.8.8"))
+             assert egress.is_forbidden_resolved_address(value)
+        assert not egress.is_forbidden_resolved_address("8.8.8.8")
 
     def test_public_resolved_addresses_rejects_mixed_private_results(self) -> None:
         original = egress._resolved_addresses
         try:
             egress._resolved_addresses = lambda hostname: {"8.8.8.8", "10.0.0.5"}
-            with self.assertRaises(egress.PolicyError):
+            with pytest.raises(egress.PolicyError):
                 egress._public_resolved_addresses("example.com")
         finally:
             egress._resolved_addresses = original
@@ -86,11 +70,11 @@ class HostnameValidationTests(unittest.TestCase):
 
         normalized = egress.normalize_reason(reason)
 
-        self.assertLessEqual(len(normalized), egress.MAX_REASON_CHARS)
-        self.assertNotIn("\n", normalized)
-        self.assertNotIn("\t", normalized)
-        self.assertNotIn("\x00", normalized)
-        self.assertTrue(normalized.startswith("Need API docs for validation"))
+        assert len(normalized) <= egress.MAX_REASON_CHARS
+        assert "\n" not in normalized
+        assert "\t" not in normalized
+        assert "\x00" not in normalized
+        assert normalized.startswith("Need API docs for validation")
 
     def test_runtime_settings_use_only_dedicated_bearer_token(self) -> None:
         old_environ = os.environ.copy()
@@ -98,40 +82,42 @@ class HostnameValidationTests(unittest.TestCase):
             os.environ.pop("MINDROOM_APPROVED_EGRESS_TOKEN", None)
             os.environ["MINDROOM_SANDBOX_PROXY_TOKEN"] = "fallback-token"
 
-            with self.assertRaises(ValueError):
+            with pytest.raises(ValueError):
                 egress.RuntimeSettings()
 
             os.environ["MINDROOM_APPROVED_EGRESS_TOKEN"] = "approved-token"
-            self.assertEqual(
-                egress.RuntimeSettings().bearer_token.get_secret_value(),
-                "approved-token",
+            assert (
+                egress.RuntimeSettings().bearer_token.get_secret_value()
+                == "approved-token"
             )
         finally:
             os.environ.clear()
             os.environ.update(old_environ)
 
 
-class StaticAllowlistTests(unittest.TestCase):
+class TestStaticAllowlist:
     def test_leading_dot_allows_domain_and_subdomains(self) -> None:
         allowlist = egress.StaticAllowlist.from_lines(
             [".github.com", "exact.example.com"],
         )
 
-        self.assertTrue(allowlist.allows("github.com"))
-        self.assertTrue(allowlist.allows("api.github.com"))
-        self.assertTrue(allowlist.allows("exact.example.com"))
-        self.assertFalse(allowlist.allows("notgithub.com"))
-        self.assertFalse(allowlist.allows("child.exact.example.com"))
+        assert allowlist.allows("github.com")
+        assert allowlist.allows("api.github.com")
+        assert allowlist.allows("exact.example.com")
+        assert not allowlist.allows("notgithub.com")
+        assert not allowlist.allows("child.exact.example.com")
 
 
-class SquidAclHelperTests(unittest.TestCase):
+class TestSquidAclHelper:
     def test_squid_command_runs_with_config_in_foreground(self) -> None:
         settings = SimpleNamespace(squid_config_path="/tmp/squid.conf")
 
-        self.assertEqual(
-            egress.squid_command(settings),
-            ["squid", "-N", "-f", "/tmp/squid.conf"],
-        )
+        assert egress.squid_command(settings) == [
+            "squid",
+            "-N",
+            "-f",
+            "/tmp/squid.conf",
+        ]
 
     def test_squid_acl_request_uses_source_host_and_port_for_policy(self) -> None:
         class Policy:
@@ -146,8 +132,8 @@ class SquidAclHelperTests(unittest.TestCase):
             policy,
         )
 
-        self.assertEqual(result, 'OK log="dynamic grant"')
-        self.assertEqual(policy.request, ("10.4.0.12", "Example.COM", 443))
+        assert result == 'OK log="dynamic grant"'
+        assert policy.request == ("10.4.0.12", "Example.COM", 443)
 
     def test_squid_acl_request_denies_when_policy_denies(self) -> None:
         class Policy:
@@ -159,10 +145,7 @@ class SquidAclHelperTests(unittest.TestCase):
             Policy(),
         )
 
-        self.assertEqual(
-            result,
-            'ERR message="hostname is not approved for this worker"',
-        )
+        assert result == 'ERR message="hostname is not approved for this worker"'
 
     def test_squid_acl_request_fails_closed_on_malformed_input(self) -> None:
         class Policy:
@@ -174,12 +157,11 @@ class SquidAclHelperTests(unittest.TestCase):
             "10.4.0.12 example.com",
             "10.4.0.12 example.com not-a-port CONNECT",
         ):
-            with self.subTest(value=value):
-                result = egress.evaluate_squid_acl_request(value, Policy())
-                self.assertTrue(result.startswith("ERR message="))
+            result = egress.evaluate_squid_acl_request(value, Policy())
+            assert result.startswith("ERR message=")
 
 
-class GrantRequestValidationTests(unittest.TestCase):
+class TestGrantRequestValidation:
     def test_grant_create_request_normalizes_strings_and_hostname(self) -> None:
         payload = egress.GrantCreateRequest.model_validate(
             {
@@ -191,9 +173,9 @@ class GrantRequestValidationTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(payload.hostname, "xn--fa-hia.de")
-        self.assertEqual(payload.subject, "v1:default:user_agent:@user:server:mind")
-        self.assertEqual(payload.reason, "Need external docs now")
+        assert payload.hostname == "xn--fa-hia.de"
+        assert payload.subject == "v1:default:user_agent:@user:server:mind"
+        assert payload.reason == "Need external docs now"
 
     def test_grant_create_request_rejects_bad_subject_type_and_ttl(self) -> None:
         base = {
@@ -202,13 +184,13 @@ class GrantRequestValidationTests(unittest.TestCase):
             "subject": "worker",
             "ttl_seconds": 300,
         }
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             egress.GrantCreateRequest.model_validate({**base, "subject_type": "user"})
-        with self.assertRaises(ValueError):
+        with pytest.raises(ValueError):
             egress.GrantCreateRequest.model_validate({**base, "ttl_seconds": 0})
 
 
-class RuntimeSettingsTests(unittest.TestCase):
+class TestRuntimeSettings:
     def test_runtime_settings_use_egress_namespace_when_pod_namespace_is_absent(
         self,
     ) -> None:
@@ -220,8 +202,8 @@ class RuntimeSettingsTests(unittest.TestCase):
 
             settings = egress.RuntimeSettings()
 
-            self.assertEqual(settings.namespace, "custom")
-            self.assertEqual(settings.bearer_token.get_secret_value(), "token")
+            assert settings.namespace == "custom"
+            assert settings.bearer_token.get_secret_value() == "token"
         finally:
             os.environ.clear()
             os.environ.update(old_environ)
@@ -235,13 +217,13 @@ class RuntimeSettingsTests(unittest.TestCase):
 
             settings = egress.RuntimeSettings()
 
-            self.assertEqual(settings.proxy_port, egress.DEFAULT_PROXY_PORT)
+            assert settings.proxy_port == egress.DEFAULT_PROXY_PORT
         finally:
             os.environ.clear()
             os.environ.update(old_environ)
 
 
-class GrantStoreTests(unittest.TestCase):
+class TestGrantStore:
     def test_worker_key_grants_are_exact_host_and_subject_matches(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             store = egress.GrantStore(Path(tmpdir) / "grants.sqlite3")
@@ -260,30 +242,24 @@ class GrantStoreTests(unittest.TestCase):
                 now=now,
             )
 
-            self.assertEqual(grant["hostname"], "api.github.com")
-            self.assertTrue(
-                store.has_grant(
-                    "api.github.com",
-                    worker_key="v1:default:user_agent:@user:server:assistant",
-                    agent_name="assistant",
-                    now=now + 1,
-                ),
+            assert grant["hostname"] == "api.github.com"
+            assert store.has_grant(
+                "api.github.com",
+                worker_key="v1:default:user_agent:@user:server:assistant",
+                agent_name="assistant",
+                now=now + 1,
             )
-            self.assertFalse(
-                store.has_grant(
-                    "github.com",
-                    worker_key="v1:default:user_agent:@user:server:assistant",
-                    agent_name="assistant",
-                    now=now + 1,
-                ),
+            assert not store.has_grant(
+                "github.com",
+                worker_key="v1:default:user_agent:@user:server:assistant",
+                agent_name="assistant",
+                now=now + 1,
             )
-            self.assertFalse(
-                store.has_grant(
-                    "api.github.com",
-                    worker_key="v1:default:user_agent:@other:server:assistant",
-                    agent_name="assistant",
-                    now=now + 1,
-                ),
+            assert not store.has_grant(
+                "api.github.com",
+                worker_key="v1:default:user_agent:@other:server:assistant",
+                agent_name="assistant",
+                now=now + 1,
             )
 
     def test_agent_grants_match_agent_name_until_expiry(self) -> None:
@@ -304,46 +280,41 @@ class GrantStoreTests(unittest.TestCase):
                 now=now,
             )
 
-            self.assertTrue(
-                store.has_grant(
-                    "python.org",
-                    worker_key="worker",
-                    agent_name="assistant",
-                    now=now + 1,
-                ),
+            assert store.has_grant(
+                "python.org",
+                worker_key="worker",
+                agent_name="assistant",
+                now=now + 1,
             )
-            self.assertFalse(
-                store.has_grant(
-                    "python.org",
-                    worker_key="worker",
-                    agent_name="other",
-                    now=now + 1,
-                ),
+            assert not store.has_grant(
+                "python.org",
+                worker_key="worker",
+                agent_name="other",
+                now=now + 1,
             )
-            self.assertFalse(
-                store.has_grant(
-                    "python.org",
-                    worker_key="worker",
-                    agent_name="assistant",
-                    now=now + 11,
-                ),
+            assert not store.has_grant(
+                "python.org",
+                worker_key="worker",
+                agent_name="assistant",
+                now=now + 11,
             )
 
 
-class WorkerKeyParsingTests(unittest.TestCase):
+class TestWorkerKeyParsing:
     def test_worker_key_agent_name_parses_shared_and_user_agent_scopes(self) -> None:
-        self.assertEqual(
-            egress.worker_key_agent_name("v1:default:shared:assistant"),
-            "assistant",
+        assert (
+            egress.worker_key_agent_name("v1:default:shared:assistant") == "assistant"
         )
-        self.assertEqual(
-            egress.worker_key_agent_name("v1:default:user_agent:@user:server:assistant"),
-            "assistant",
+        assert (
+            egress.worker_key_agent_name(
+                "v1:default:user_agent:@user:server:assistant",
+            )
+            == "assistant"
         )
-        self.assertIsNone(egress.worker_key_agent_name("v1:default:user:@user:server"))
+        assert egress.worker_key_agent_name("v1:default:user:@user:server") is None
 
 
-class KubernetesWorkerResolverTests(unittest.TestCase):
+class TestKubernetesWorkerResolver:
     def test_resolver_uses_kubernetes_clients_for_worker_identity(self) -> None:
         class CoreApi:
             def list_namespaced_pod(self, *, namespace: str, field_selector: str):
@@ -383,17 +354,14 @@ class KubernetesWorkerResolverTests(unittest.TestCase):
 
         identity = resolver.resolve("10.0.0.10")
 
-        self.assertIsNotNone(identity)
-        self.assertEqual(
-            identity.worker_key,
-            "v1:default:user_agent:@user:server:assistant",
-        )
-        self.assertEqual(identity.agent_name, "assistant")
-        self.assertEqual(core_api.field_selector, "status.podIP=10.0.0.10")
-        self.assertEqual(apps_api.name, "worker-deployment")
+        assert identity is not None
+        assert identity.worker_key == "v1:default:user_agent:@user:server:assistant"
+        assert identity.agent_name == "assistant"
+        assert core_api.field_selector == "status.podIP=10.0.0.10"
+        assert apps_api.name == "worker-deployment"
 
 
-class PolicyApiTests(unittest.TestCase):
+class TestPolicyApi:
     def test_fastapi_policy_api_creates_grants_with_pydantic_validation(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             store = egress.GrantStore(Path(tmpdir) / "grants.sqlite3")
@@ -405,8 +373,8 @@ class PolicyApiTests(unittest.TestCase):
             client = TestClient(app)
 
             unauthorized = client.post("/grants", json={})
-            self.assertEqual(unauthorized.status_code, 401)
-            self.assertEqual(unauthorized.json()["ok"], False)
+            assert unauthorized.status_code == 401
+            assert unauthorized.json()["ok"] is False
 
             response = client.post(
                 "/grants",
@@ -420,10 +388,10 @@ class PolicyApiTests(unittest.TestCase):
                 },
             )
 
-            self.assertEqual(response.status_code, 201)
+            assert response.status_code == 201
             body = response.json()
-            self.assertEqual(body["grant"]["hostname"], "github.com")
-            self.assertEqual(body["grant"]["effective_ttl_seconds"], 60)
+            assert body["grant"]["hostname"] == "github.com"
+            assert body["grant"]["effective_ttl_seconds"] == 60
 
             invalid = client.post(
                 "/grants",
@@ -435,9 +403,5 @@ class PolicyApiTests(unittest.TestCase):
                     "ttl_seconds": 60,
                 },
             )
-            self.assertEqual(invalid.status_code, 400)
-            self.assertEqual(invalid.json()["ok"], False)
-
-
-if __name__ == "__main__":
-    unittest.main()
+            assert invalid.status_code == 400
+            assert invalid.json()["ok"] is False

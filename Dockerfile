@@ -8,7 +8,9 @@ WORKDIR /app
 COPY --from=ghcr.io/astral-sh/uv:0.11.3@sha256:90bbb3c16635e9627f49eec6539f956d70746c409209041800a0280b93152823 /uv /uvx /bin/
 
 COPY pyproject.toml uv.lock ./
-RUN uv sync --locked --no-dev --no-install-project
+COPY README.md ./
+COPY src ./src
+RUN uv sync --locked --no-dev
 
 FROM python:3.13-slim@sha256:a0779d7c12fc20be6ec6b4ddc901a4fd7657b8a6bc9def9d3fde89ed5efe0a3d
 
@@ -25,11 +27,10 @@ RUN apt-get update \
     && chown -R 1000:1000 /etc/mindroom-egress /run/squid /var/lib/mindroom-egress /var/log/squid /var/spool/squid
 
 COPY --from=builder /app/.venv /app/.venv
-COPY approved_egress_proxy.py /app/approved_egress_proxy.py
 COPY squid-acl-helper /app/squid-acl-helper
 COPY squid.conf /etc/squid/squid.conf
 COPY allowed-domains.txt /etc/mindroom-egress/allowed-domains.txt
 RUN chmod 0555 /app/squid-acl-helper
 RUN squid -k parse -f /etc/squid/squid.conf
 
-CMD ["python", "/app/approved_egress_proxy.py"]
+CMD ["mindroom-egress-proxy"]

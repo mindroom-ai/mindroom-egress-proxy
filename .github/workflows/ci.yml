@@ -19,6 +19,6 @@ jobs:
       - name: Lint
         run: uv run ruff check .
       - name: Test
-        run: uv run python -m unittest -v
+        run: uv run pytest
       - name: Build image
         run: docker build -t mindroom-egress-proxy:ci .

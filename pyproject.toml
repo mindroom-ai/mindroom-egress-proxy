@@ -1,6 +1,8 @@
 [project]
 name = "mindroom-approved-egress-proxy"
 version = "0.1.0"
+description = "Network firewall and approval proxy for MindRoom worker internet access"
+readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "dnspython>=2.8.0",
@@ -12,11 +14,22 @@ dependencies = [
     "uvicorn>=0.46.0",
 ]
 
+[project.scripts]
+mindroom-egress-proxy = "mindroom_egress_proxy.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",
+    "pytest>=9.0.0",
     "ruff>=0.15.0",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mindroom_egress_proxy"]
 
 [tool.ruff]
 target-version = "py313"
@@ -30,8 +43,6 @@ ignore = [
     # Pydocstyle has mutually exclusive defaults unless a convention is selected.
     "D203",
     "D213",
-    # This is a standalone container script, not a Python package.
-    "INP001",
     # This service has explicit API/store boundaries with several payload fields.
     "PLR0913",
     # Guard-style policy code is clearer with direct return decisions.
@@ -50,11 +61,13 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"test_*.py" = [
-    # Tests are written with unittest because they run with stdlib unittest.
-    "PT",
+"tests/test_*.py" = [
     # Test names already document behavior; method/class docstrings add noise.
     "D",
+    # Pytest assertions are intentionally plain assert statements.
+    "S101",
+    # Tests often validate broad input-validation failures.
+    "PT011",
     # Fake tokens and compact test constants are intentional.
     "PLR2004",
     "S105",
