@@ -29,7 +29,7 @@ dev = [
     "pip-audit>=2.10.0",
     "pre-commit>=4.5.0",
     "pytest>=9.0.0",
-    "ruff>=0.15.0",
+    "ruff>=0.15.16",
 ]
 
 [tool.pytest.ini_options]
