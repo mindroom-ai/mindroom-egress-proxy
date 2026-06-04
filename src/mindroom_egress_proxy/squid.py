@@ -37,9 +37,7 @@ def evaluate_squid_acl_request(line: str, policy: EgressPolicy) -> str:
         source_ip, hostname, raw_port, _method = line.strip().split(maxsplit=3)
         port = _valid_port(unquote(raw_port))
         allowed, reason, _connect_address = policy.is_allowed(
-            source_ip=unquote(source_ip),
-            hostname=unquote(hostname),
-            port=port,
+            source_ip=unquote(source_ip), hostname=unquote(hostname), port=port
         )
     except Exception as exc:  # noqa: BLE001
         # Squid helpers must fail closed on malformed input or policy errors.

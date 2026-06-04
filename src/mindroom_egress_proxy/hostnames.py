@@ -31,7 +31,7 @@ def _raw_hostname(value: str) -> str:
         raise ValueError("hostname must not be empty")
     if "://" in raw or any(part in raw for part in ("/", "?", "#", "@")):
         raise ValueError(
-            "hostname must not include a scheme, path, query, or credentials",
+            "hostname must not include a scheme, path, query, or credentials"
         )
     if "*" in raw:
         raise ValueError("hostname wildcards are not supported")
@@ -71,7 +71,7 @@ def _validate_external_hostname(normalized: str) -> None:
         if not all(char.isalnum() or char == "-" for char in label):
             raise ValueError("hostname contains unsupported characters")
     if normalized in FORBIDDEN_HOSTNAMES or normalized.endswith(
-        FORBIDDEN_HOST_SUFFIXES,
+        FORBIDDEN_HOST_SUFFIXES
     ):
         raise ValueError("hostname points at an internal name")
 

@@ -22,13 +22,10 @@ class StaticWorkerResolver:
 
 
 def test_policy_allows_static_allowlist_without_worker_identity(
-    monkeypatch,
-    tmp_path,
+    monkeypatch, tmp_path
 ) -> None:
     monkeypatch.setattr(
-        hostnames,
-        "_resolved_addresses",
-        lambda _hostname: {"93.184.216.34"},
+        hostnames, "_resolved_addresses", lambda _hostname: {"93.184.216.34"}
     )
     policy = EgressPolicy(
         static_allowlist=StaticAllowlist.from_lines([".example.com"]),
@@ -37,9 +34,7 @@ def test_policy_allows_static_allowlist_without_worker_identity(
     )
 
     allowed, reason, connect_address = policy.is_allowed(
-        source_ip="10.0.0.12",
-        hostname="docs.example.com",
-        port=443,
+        source_ip="10.0.0.12", hostname="docs.example.com", port=443
     )
 
     assert allowed
@@ -47,14 +42,9 @@ def test_policy_allows_static_allowlist_without_worker_identity(
     assert connect_address == "93.184.216.34"
 
 
-def test_policy_allows_dynamic_grant_for_resolved_worker(
-    monkeypatch,
-    tmp_path,
-) -> None:
+def test_policy_allows_dynamic_grant_for_resolved_worker(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(
-        hostnames,
-        "_resolved_addresses",
-        lambda _hostname: {"93.184.216.34"},
+        hostnames, "_resolved_addresses", lambda _hostname: {"93.184.216.34"}
     )
     worker_key = "v1:default:user_agent:@user:server:assistant"
     store = GrantStore(tmp_path / "grants.sqlite3")
@@ -75,14 +65,12 @@ def test_policy_allows_dynamic_grant_for_resolved_worker(
         static_allowlist=StaticAllowlist.from_lines([]),
         grant_store=store,
         worker_resolver=StaticWorkerResolver(
-            WorkerIdentity(worker_key=worker_key, agent_name="assistant"),
+            WorkerIdentity(worker_key=worker_key, agent_name="assistant")
         ),
     )
 
     allowed, reason, connect_address = policy.is_allowed(
-        source_ip="10.0.0.12",
-        hostname="docs.example.com",
-        port=443,
+        source_ip="10.0.0.12", hostname="docs.example.com", port=443
     )
 
     assert allowed
@@ -90,14 +78,9 @@ def test_policy_allows_dynamic_grant_for_resolved_worker(
     assert connect_address == "93.184.216.34"
 
 
-def test_policy_denies_agent_grant_for_user_agent_worker(
-    monkeypatch,
-    tmp_path,
-) -> None:
+def test_policy_denies_agent_grant_for_user_agent_worker(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(
-        hostnames,
-        "_resolved_addresses",
-        lambda _hostname: {"93.184.216.34"},
+        hostnames, "_resolved_addresses", lambda _hostname: {"93.184.216.34"}
     )
     store = GrantStore(tmp_path / "grants.sqlite3")
     store.create_grant(
@@ -120,14 +103,12 @@ def test_policy_denies_agent_grant_for_user_agent_worker(
             WorkerIdentity(
                 worker_key="v1:default:user_agent:@bob:server:assistant",
                 agent_name="assistant",
-            ),
+            )
         ),
     )
 
     allowed, reason, connect_address = policy.is_allowed(
-        source_ip="10.0.0.12",
-        hostname="docs.example.com",
-        port=443,
+        source_ip="10.0.0.12", hostname="docs.example.com", port=443
     )
 
     assert not allowed
@@ -135,14 +116,9 @@ def test_policy_denies_agent_grant_for_user_agent_worker(
     assert connect_address is None
 
 
-def test_policy_allows_agent_grant_for_shared_worker(
-    monkeypatch,
-    tmp_path,
-) -> None:
+def test_policy_allows_agent_grant_for_shared_worker(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(
-        hostnames,
-        "_resolved_addresses",
-        lambda _hostname: {"93.184.216.34"},
+        hostnames, "_resolved_addresses", lambda _hostname: {"93.184.216.34"}
     )
     store = GrantStore(tmp_path / "grants.sqlite3")
     store.create_grant(
@@ -163,16 +139,13 @@ def test_policy_allows_agent_grant_for_shared_worker(
         grant_store=store,
         worker_resolver=StaticWorkerResolver(
             WorkerIdentity(
-                worker_key="v1:default:shared:assistant",
-                agent_name="assistant",
-            ),
+                worker_key="v1:default:shared:assistant", agent_name="assistant"
+            )
         ),
     )
 
     allowed, reason, connect_address = policy.is_allowed(
-        source_ip="10.0.0.12",
-        hostname="docs.example.com",
-        port=443,
+        source_ip="10.0.0.12", hostname="docs.example.com", port=443
     )
 
     assert allowed
@@ -181,13 +154,10 @@ def test_policy_allows_agent_grant_for_shared_worker(
 
 
 def test_policy_denies_dynamic_hostname_when_worker_identity_is_missing(
-    monkeypatch,
-    tmp_path,
+    monkeypatch, tmp_path
 ) -> None:
     monkeypatch.setattr(
-        hostnames,
-        "_resolved_addresses",
-        lambda _hostname: {"93.184.216.34"},
+        hostnames, "_resolved_addresses", lambda _hostname: {"93.184.216.34"}
     )
     policy = EgressPolicy(
         static_allowlist=StaticAllowlist.from_lines([]),
@@ -196,9 +166,7 @@ def test_policy_denies_dynamic_hostname_when_worker_identity_is_missing(
     )
 
     allowed, reason, connect_address = policy.is_allowed(
-        source_ip="10.0.0.12",
-        hostname="docs.example.com",
-        port=443,
+        source_ip="10.0.0.12", hostname="docs.example.com", port=443
     )
 
     assert not allowed

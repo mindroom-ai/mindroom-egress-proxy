@@ -65,9 +65,7 @@ def run_service(settings: RuntimeSettings) -> None:
             api_server.should_exit = True
 
     monitor_thread = threading.Thread(
-        target=monitor_squid,
-        name="squid-monitor",
-        daemon=True,
+        target=monitor_squid, name="squid-monitor", daemon=True
     )
     monitor_thread.start()
     try:

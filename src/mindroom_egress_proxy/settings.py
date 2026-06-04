@@ -23,12 +23,10 @@ class RuntimeSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     proxy_port: int = Field(
-        default=DEFAULT_PROXY_PORT,
-        alias="MINDROOM_EGRESS_PROXY_LISTEN_PORT",
+        default=DEFAULT_PROXY_PORT, alias="MINDROOM_EGRESS_PROXY_LISTEN_PORT"
     )
     api_port: int = Field(
-        default=DEFAULT_POLICY_API_PORT,
-        alias="MINDROOM_APPROVED_EGRESS_API_PORT",
+        default=DEFAULT_POLICY_API_PORT, alias="MINDROOM_APPROVED_EGRESS_API_PORT"
     )
     max_ttl_seconds: int = Field(
         default=DEFAULT_MAX_TTL_SECONDS,
@@ -36,8 +34,7 @@ class RuntimeSettings(BaseSettings):
     )
     pod_namespace: str | None = Field(default=None, alias="POD_NAMESPACE")
     egress_namespace: str = Field(
-        default=DEFAULT_NAMESPACE,
-        alias="MINDROOM_EGRESS_NAMESPACE",
+        default=DEFAULT_NAMESPACE, alias="MINDROOM_EGRESS_NAMESPACE"
     )
     allowlist_path: Path = Field(
         default=Path("/etc/mindroom-egress/allowed-domains.txt"),
@@ -50,8 +47,7 @@ class RuntimeSettings(BaseSettings):
     bearer_token: SecretStr = Field(alias="MINDROOM_APPROVED_EGRESS_TOKEN")
     log_level: str = Field(default="info", alias="MINDROOM_APPROVED_EGRESS_LOG_LEVEL")
     squid_config_path: str = Field(
-        default=DEFAULT_SQUID_CONFIG_PATH,
-        alias="MINDROOM_EGRESS_SQUID_CONFIG_PATH",
+        default=DEFAULT_SQUID_CONFIG_PATH, alias="MINDROOM_EGRESS_SQUID_CONFIG_PATH"
     )
 
     @field_validator("proxy_port", "api_port")

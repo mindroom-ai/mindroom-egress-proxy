@@ -71,11 +71,7 @@ class EgressPolicy:
         self.worker_resolver = worker_resolver
 
     def is_allowed(
-        self,
-        *,
-        source_ip: str,
-        hostname: str,
-        port: int,
+        self, *, source_ip: str, hostname: str, port: int
     ) -> tuple[bool, str, str | None]:
         if port not in SAFE_PORTS:
             return False, "port is not allowed", None

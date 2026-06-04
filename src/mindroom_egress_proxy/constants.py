@@ -14,15 +14,7 @@ MAX_REASON_CHARS = 500
 WORKER_KEY_MIN_PARTS = 4
 USER_AGENT_WORKER_KEY_MIN_PARTS = 5
 SAFE_PORTS = {80, 443}
-FORBIDDEN_HOSTNAMES = {
-    "localhost",
-    "metadata.google.internal",
-}
-FORBIDDEN_HOST_SUFFIXES = (
-    ".localhost",
-    ".svc",
-    ".svc.cluster.local",
-    ".cluster.local",
-)
+FORBIDDEN_HOSTNAMES = {"localhost", "metadata.google.internal"}
+FORBIDDEN_HOST_SUFFIXES = (".localhost", ".svc", ".svc.cluster.local", ".cluster.local")
 WORKER_ID_LABEL = "mindroom.ai/worker-id"
 WORKER_KEY_ANNOTATION = "mindroom.ai/worker-key"

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib import parse, request
 
+import idna
 from agno.tools import Toolkit
 from mindroom.tool_system.metadata import (
     SetupType,
@@ -31,17 +32,8 @@ MAX_REASON_CHARS = 500
 MAX_DNS_NAME_LENGTH = 253
 MAX_DNS_LABEL_LENGTH = 63
 MIN_DNS_LABELS = 2
-FORBIDDEN_HOSTNAMES = {
-    "localhost",
-    "metadata.google.internal",
-}
-FORBIDDEN_HOST_SUFFIXES = (
-    ".localhost",
-    ".svc",
-    ".svc.cluster.local",
-    ".cluster.local",
-)
-SHARED_EXECUTION_SCOPES = {"shared", "unscoped", "agent", "global"}
+FORBIDDEN_HOSTNAMES = {"localhost", "metadata.google.internal"}
+FORBIDDEN_HOST_SUFFIXES = (".localhost", ".svc", ".svc.cluster.local", ".cluster.local")
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,7 +108,7 @@ def _canonical_hostname(value: str) -> str:
         raise ValueError("hostname must not be empty")
     if "://" in raw or any(part in raw for part in ("/", "?", "#", "@")):
         raise ValueError(
-            "hostname must not include a scheme, path, query, or credentials",
+            "hostname must not include a scheme, path, query, or credentials"
         )
     if "*" in raw:
         raise ValueError("hostname wildcards are not supported")
@@ -131,8 +123,10 @@ def _canonical_hostname(value: str) -> str:
     if len(raw) > MAX_DNS_NAME_LENGTH:
         raise ValueError("hostname is too long")
     try:
-        normalized = raw.encode("idna").decode("ascii").lower()
-    except UnicodeError as exc:
+        normalized = (
+            idna.encode(raw, uts46=True, std3_rules=True).decode("ascii").lower()
+        )
+    except idna.IDNAError as exc:
         raise ValueError("hostname is not valid IDNA") from exc
     labels = normalized.split(".")
     if len(labels) < MIN_DNS_LABELS:
@@ -149,7 +143,7 @@ def _canonical_hostname(value: str) -> str:
         if not all(char.isalnum() or char == "-" for char in label):
             raise ValueError("hostname contains unsupported characters")
     if normalized in FORBIDDEN_HOSTNAMES or normalized.endswith(
-        FORBIDDEN_HOST_SUFFIXES,
+        FORBIDDEN_HOST_SUFFIXES
     ):
         raise ValueError("hostname points at an internal name")
     return normalized
@@ -184,12 +178,25 @@ def _is_plain_http_api_host_allowed(hostname: str) -> bool:
 
 def _policy_api_url() -> str:
     url = (
-        os.environ.get("MINDROOM_APPROVED_EGRESS_API_URL") or DEFAULT_POLICY_API_URL
-    ).rstrip("/")
-    parsed = parse.urlsplit(url)
+        (os.environ.get("MINDROOM_APPROVED_EGRESS_API_URL") or DEFAULT_POLICY_API_URL)
+        .strip()
+        .rstrip("/")
+    )
+    try:
+        parsed = parse.urlsplit(url)
+        hostname = parsed.hostname or ""
+        port = parsed.port
+    except ValueError as exc:
+        raise RuntimeError(
+            "MINDROOM_APPROVED_EGRESS_API_URL has an invalid host or port"
+        ) from exc
+    if port is not None and not isinstance(port, int):
+        raise RuntimeError(
+            "MINDROOM_APPROVED_EGRESS_API_URL has an invalid host or port"
+        )
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise RuntimeError(
-            "MINDROOM_APPROVED_EGRESS_API_URL must be an http or https URL",
+            "MINDROOM_APPROVED_EGRESS_API_URL must be an http or https URL"
         )
     if (
         parsed.username
@@ -200,13 +207,12 @@ def _policy_api_url() -> str:
     ):
         raise RuntimeError(
             "MINDROOM_APPROVED_EGRESS_API_URL must not include userinfo, path, "
-            "query, or fragment",
+            "query, or fragment"
         )
-    hostname = parsed.hostname or ""
     if parsed.scheme == "http" and not _is_plain_http_api_host_allowed(hostname):
         raise RuntimeError(
             "plain HTTP approved egress policy API URLs must use loopback or an "
-            "in-cluster service name",
+            "in-cluster service name"
         )
     return url
 
@@ -236,8 +242,7 @@ def _effective_ttl_seconds(ttl_minutes: int) -> int:
     if requested <= 0:
         raise ValueError("ttl_minutes must be positive")
     max_ttl = _env_int(
-        "MINDROOM_APPROVED_EGRESS_MAX_TTL_SECONDS",
-        DEFAULT_MAX_TTL_SECONDS,
+        "MINDROOM_APPROVED_EGRESS_MAX_TTL_SECONDS", DEFAULT_MAX_TTL_SECONDS
     )
     return max(1, min(requested, max_ttl))
 
@@ -246,7 +251,7 @@ def _grant_subject(agent_name: str) -> _GrantSubject:
     context = get_tool_runtime_context()
     if context is None:
         raise RuntimeError(
-            "request_network_access requires a live MindRoom Matrix tool context",
+            "request_network_access requires a live MindRoom Matrix tool context"
         )
     scope = context.config.get_agent_execution_scope(agent_name)
     if scope == "user_agent":
@@ -254,12 +259,12 @@ def _grant_subject(agent_name: str) -> _GrantSubject:
         worker_key = resolve_worker_key("user_agent", identity, agent_name=agent_name)
         if worker_key is None:
             raise RuntimeError(
-                "could not resolve the user-agent worker key for this request",
+                "could not resolve the user-agent worker key for this request"
             )
         return _GrantSubject(subject_type="worker_key", subject=worker_key)
     if scope == "user":
         raise RuntimeError("approved egress is not supported for worker_scope=user")
-    if scope in SHARED_EXECUTION_SCOPES or not scope:
+    if scope == "shared" or scope is None:
         return _GrantSubject(subject_type="agent", subject=agent_name)
     raise RuntimeError(f"approved egress is not supported for worker scope {scope!r}")
 
@@ -296,19 +301,19 @@ def _post_grant(payload: dict[str, object]) -> dict[str, object]:
     parsed = json.loads(response_body.decode("utf-8"))
     if not isinstance(parsed, dict):
         raise RuntimeError(
-            "approved egress policy service returned a non-object response",
+            "approved egress policy service returned a non-object response"
         )
     if parsed.get("ok") is not True:
         raise RuntimeError(
             str(
                 parsed.get("error")
-                or "approved egress policy service rejected the grant",
-            ),
+                or "approved egress policy service rejected the grant"
+            )
         )
     grant = parsed.get("grant")
     if not isinstance(grant, dict):
         raise RuntimeError(
-            "approved egress policy service response is missing the grant",
+            "approved egress policy service response is missing the grant"
         )
     return grant
 
@@ -337,10 +342,7 @@ class ApprovedEgressTools(Toolkit):
                 registered.description = request_description
 
     async def request_network_access(
-        self,
-        hostname: str,
-        ttl_minutes: int,
-        reason: str,
+        self, hostname: str, ttl_minutes: int, reason: str
     ) -> str:
         """Request temporary worker egress to one exact external hostname.
 
@@ -368,7 +370,7 @@ class ApprovedEgressTools(Toolkit):
         context = get_tool_runtime_context()
         if context is None:
             raise RuntimeError(
-                "request_network_access requires a live MindRoom Matrix tool context",
+                "request_network_access requires a live MindRoom Matrix tool context"
             )
         subject = _grant_subject(context.agent_name)
         grant = _post_grant(
@@ -383,7 +385,7 @@ class ApprovedEgressTools(Toolkit):
                 "ttl_seconds": effective_ttl_seconds,
                 "approved_by": context.requester_id,
                 "reason": normalized_reason,
-            },
+            }
         )
         expiry = grant.get("expires_at")
         capped = (
