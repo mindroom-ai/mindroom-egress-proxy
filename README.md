@@ -110,6 +110,12 @@ uv run pytest
 uv build
 ```
 
+Common checks are also available through `make`:
+
+```bash
+make check
+```
+
 Build image:
 
 ```bash
