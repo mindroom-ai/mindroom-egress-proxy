@@ -1,6 +1,7 @@
-.PHONY: audit build check docker-build format lint pre-commit test
+.PHONY: audit build check docker-build format lint plugin-artifact pre-commit test
 
 IMAGE ?= mindroom-egress-proxy:local
+PLUGIN_ARTIFACT_VERSION ?= local
 
 format:
 	uv run ruff format .
@@ -18,10 +19,14 @@ audit:
 build:
 	uv build
 
+plugin-artifact:
+	mkdir -p dist
+	tar --exclude='__pycache__' --exclude='*.pyc' -C plugins -czf dist/approved-egress-$(PLUGIN_ARTIFACT_VERSION).tar.gz approved-egress
+
 docker-build:
 	docker build -t $(IMAGE) .
 
 pre-commit:
 	uv run pre-commit run --all-files
 
-check: lint test audit build docker-build
+check: lint test audit build plugin-artifact docker-build

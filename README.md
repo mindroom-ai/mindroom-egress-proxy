@@ -14,10 +14,10 @@ At a high level, it provides:
 - DNS and private-address checks so approved hostnames cannot point back into
   cluster-local, metadata, loopback, or private networks
 
-This repository is the enforcement layer. A MindRoom approval tool or plugin can
-ask a human to approve access to a hostname, then call this proxy's policy API
-to create a short-lived grant. The proxy still enforces the decision on every
-connection.
+This repository is the enforcement layer and includes a generic MindRoom plugin
+that can request temporary grants. The plugin asks MindRoom to route the tool
+call through human approval, then calls this proxy's policy API to create a
+short-lived grant. The proxy still enforces the decision on every connection.
 
 ## How It Works
 
@@ -40,14 +40,38 @@ One common setup is:
    `HTTPS_PROXY`.
 2. NetworkPolicy or equivalent cluster policy prevents workers from bypassing
    the proxy.
-3. MindRoom exposes a `request_network_access(hostname, ttl_minutes, reason)`
-   tool to agents.
+3. MindRoom loads the `approved-egress` plugin from this repository's plugin
+   artifact.
 4. MindRoom's tool approval system asks a human to approve that tool call.
 5. After approval, the tool posts a temporary grant to this proxy's policy API.
 6. Squid checks each request against the static allowlist and active grants.
 
 The approval tool improves user experience; this proxy is the network security
 boundary.
+
+## Approved Egress Plugin
+
+The reusable plugin lives in `plugins/approved-egress` and exposes the
+`approved_egress` toolkit with:
+
+```text
+request_network_access(hostname, ttl_minutes, reason)
+```
+
+The plugin is generic. It contains no deployment manifests, default domain
+policy, tokens, or environment-specific routing. It needs:
+
+- `MINDROOM_APPROVED_EGRESS_API_URL`
+- `MINDROOM_APPROVED_EGRESS_TOKEN`
+- optional `MINDROOM_APPROVED_EGRESS_ALLOWLIST_PATH`
+- optional `MINDROOM_APPROVED_EGRESS_ALLOWLIST`
+- optional `MINDROOM_APPROVED_EGRESS_MAX_TTL_SECONDS`
+
+If a requested hostname already matches the configured static allowlist, the
+plugin reports that no dynamic grant is needed and does not call the policy API.
+For private per-user agents it creates exact `worker_key` grants. For shared
+agents it creates `agent` grants, which the proxy honors only for shared or
+unscoped worker identities.
 
 ## Runtime
 
@@ -123,7 +147,8 @@ docker build -t mindroom-egress-proxy:local .
 ```
 
 Tag releases publish the container image to GHCR and upload Python package
-artifacts to the matching GitHub release.
+artifacts plus `approved-egress-<version>.tar.gz` to the matching GitHub
+release.
 
 ## Deployment Boundary
 

@@ -76,6 +76,10 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"plugins/approved-egress/tools.py" = [
+    # MindRoom plugins are loaded from standalone directories, not packages.
+    "INP001",
+]
 "tests/test_*.py" = [
     # Test names already document behavior; method/class docstrings add noise.
     "D",

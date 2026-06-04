@@ -28,5 +28,7 @@ jobs:
         run: make audit
       - name: Build package
         run: uv build
+      - name: Build plugin artifact
+        run: make plugin-artifact
       - name: Build image
         run: docker build -t mindroom-egress-proxy:ci .
