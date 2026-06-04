@@ -27,10 +27,8 @@ RUN apt-get update \
     && chown -R 1000:1000 /etc/mindroom-egress /run/squid /var/lib/mindroom-egress /var/log/squid /var/spool/squid
 
 COPY --from=builder /app/.venv /app/.venv
-COPY squid-acl-helper /app/squid-acl-helper
 COPY squid.conf /etc/squid/squid.conf
 COPY allowed-domains.txt /etc/mindroom-egress/allowed-domains.txt
-RUN chmod 0555 /app/squid-acl-helper
 RUN squid -k parse -f /etc/squid/squid.conf
 
 CMD ["mindroom-egress-proxy"]
