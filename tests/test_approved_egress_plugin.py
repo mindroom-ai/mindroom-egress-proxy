@@ -135,6 +135,27 @@ def test_request_network_access_skips_grant_when_static_allowed() -> None:
     assert "No temporary grant was created" in result
 
 
+def test_plugin_hostname_normalization_matches_policy_api_idna_rules() -> None:
+    tools = _load_tools_module()
+
+    assert tools._canonical_hostname("faß.de") == "xn--fa-hia.de"
+    assert tools._canonical_hostname("Ｆｏｏ.example") == "foo.example"
+    with pytest.raises(ValueError, match="hostname is not valid IDNA"):
+        tools._canonical_hostname("☃.example")
+
+
+def test_static_allowlist_does_not_apply_idna2003_confusable_mapping() -> None:
+    tools = _load_tools_module()
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        allowlist_path = Path(temp_dir) / "allowed-domains.txt"
+        allowlist_path.write_text("faß.de\n", encoding="utf-8")
+        os.environ["MINDROOM_APPROVED_EGRESS_ALLOWLIST_PATH"] = str(allowlist_path)
+
+        assert tools._static_allowlist_allows("faß.de")
+        assert not tools._static_allowlist_allows("fass.de")
+
+
 def test_request_network_access_posts_grant_to_fake_policy_api() -> None:
     tools = _load_tools_module()
     captured: dict[str, object] = {}
@@ -264,3 +285,44 @@ def test_shared_agent_requests_agent_scoped_grant() -> None:
     assert isinstance(payload, dict)
     assert payload["subject_type"] == "agent"
     assert payload["subject"] == "shared_assistant"
+
+
+def test_unknown_execution_scopes_fail_closed() -> None:
+    tools = _load_tools_module()
+
+    class Config:
+        def get_agent_execution_scope(self, agent_name: str) -> str:
+            self.agent_name = agent_name
+            return "global"
+
+    context = types.SimpleNamespace(
+        agent_name="assistant",
+        room_id="!room:server",
+        resolved_thread_id=None,
+        thread_id="$thread",
+        requester_id="@user:server",
+        config=Config(),
+        runtime_paths=object(),
+    )
+    old_context = tools.get_tool_runtime_context
+    try:
+        tools.get_tool_runtime_context = lambda: context
+
+        with pytest.raises(
+            RuntimeError,
+            match="approved egress is not supported for worker scope 'global'",
+        ):
+            tools._grant_subject("assistant")
+    finally:
+        tools.get_tool_runtime_context = old_context
+
+
+def test_policy_api_url_rejects_invalid_port() -> None:
+    tools = _load_tools_module()
+    os.environ["MINDROOM_APPROVED_EGRESS_API_URL"] = "http://127.0.0.1:notaport"
+
+    with pytest.raises(
+        RuntimeError,
+        match="MINDROOM_APPROVED_EGRESS_API_URL has an invalid port",
+    ):
+        tools._policy_api_url()

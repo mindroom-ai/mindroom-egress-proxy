@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib import parse, request
 
+import idna
 from agno.tools import Toolkit
 from mindroom.tool_system.metadata import (
     SetupType,
@@ -41,7 +42,6 @@ FORBIDDEN_HOST_SUFFIXES = (
     ".svc.cluster.local",
     ".cluster.local",
 )
-SHARED_EXECUTION_SCOPES = {"shared", "unscoped", "agent", "global"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,8 +131,14 @@ def _canonical_hostname(value: str) -> str:
     if len(raw) > MAX_DNS_NAME_LENGTH:
         raise ValueError("hostname is too long")
     try:
-        normalized = raw.encode("idna").decode("ascii").lower()
-    except UnicodeError as exc:
+        normalized = (
+            idna.encode(raw, uts46=True, std3_rules=True)
+            .decode(
+                "ascii",
+            )
+            .lower()
+        )
+    except idna.IDNAError as exc:
         raise ValueError("hostname is not valid IDNA") from exc
     labels = normalized.split(".")
     if len(labels) < MIN_DNS_LABELS:
@@ -184,9 +190,18 @@ def _is_plain_http_api_host_allowed(hostname: str) -> bool:
 
 def _policy_api_url() -> str:
     url = (
-        os.environ.get("MINDROOM_APPROVED_EGRESS_API_URL") or DEFAULT_POLICY_API_URL
-    ).rstrip("/")
+        (os.environ.get("MINDROOM_APPROVED_EGRESS_API_URL") or DEFAULT_POLICY_API_URL)
+        .strip()
+        .rstrip("/")
+    )
     parsed = parse.urlsplit(url)
+    try:
+        hostname = parsed.hostname or ""
+        _port = parsed.port
+    except ValueError as exc:
+        raise RuntimeError(
+            "MINDROOM_APPROVED_EGRESS_API_URL has an invalid port",
+        ) from exc
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise RuntimeError(
             "MINDROOM_APPROVED_EGRESS_API_URL must be an http or https URL",
@@ -202,7 +217,6 @@ def _policy_api_url() -> str:
             "MINDROOM_APPROVED_EGRESS_API_URL must not include userinfo, path, "
             "query, or fragment",
         )
-    hostname = parsed.hostname or ""
     if parsed.scheme == "http" and not _is_plain_http_api_host_allowed(hostname):
         raise RuntimeError(
             "plain HTTP approved egress policy API URLs must use loopback or an "
@@ -259,7 +273,7 @@ def _grant_subject(agent_name: str) -> _GrantSubject:
         return _GrantSubject(subject_type="worker_key", subject=worker_key)
     if scope == "user":
         raise RuntimeError("approved egress is not supported for worker_scope=user")
-    if scope in SHARED_EXECUTION_SCOPES or not scope:
+    if scope == "shared" or scope is None:
         return _GrantSubject(subject_type="agent", subject=agent_name)
     raise RuntimeError(f"approved egress is not supported for worker scope {scope!r}")
 
