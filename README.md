@@ -1,6 +1,25 @@
 # MindRoom Egress Proxy
 
-Approved egress proxy for MindRoom worker environments.
+Network firewall and approval proxy for MindRoom worker environments.
+
+MindRoom agents often need tools that can read docs, install packages, call
+APIs, or inspect web pages. This service gives those workers a controlled path
+to the internet without making outbound network access open-ended.
+
+At a high level, it provides:
+
+- a default-deny proxy for worker HTTP and HTTPS traffic
+- a static allowlist for destinations that are always permitted
+- temporary, human-approved grants for blocked hostnames
+- DNS and private-address checks so approved hostnames cannot point back into
+  cluster-local, metadata, loopback, or private networks
+
+This repository is the enforcement layer. A MindRoom approval tool or plugin can
+ask a human to approve access to a hostname, then call this proxy's policy API
+to create a short-lived grant. The proxy still enforces the decision on every
+connection.
+
+## How It Works
 
 The container runs Squid as an HTTP/CONNECT forward proxy and a small FastAPI
 policy service for temporary dynamic grants. Squid allows traffic when either:
@@ -12,6 +31,23 @@ policy service for temporary dynamic grants. Squid allows traffic when either:
 The proxy fails closed for malformed helper requests, unsupported ports,
 internal hostnames, private or metadata address ranges, and unresolved worker
 identity.
+
+## MindRoom Approval Flow
+
+One common setup is:
+
+1. Worker traffic is routed through this proxy with `HTTP_PROXY` and
+   `HTTPS_PROXY`.
+2. NetworkPolicy or equivalent cluster policy prevents workers from bypassing
+   the proxy.
+3. MindRoom exposes a `request_network_access(hostname, ttl_minutes, reason)`
+   tool to agents.
+4. MindRoom's tool approval system asks a human to approve that tool call.
+5. After approval, the tool posts a temporary grant to this proxy's policy API.
+6. Squid checks each request against the static allowlist and active grants.
+
+The approval tool improves user experience; this proxy is the network security
+boundary.
 
 ## Runtime
 
