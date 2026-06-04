@@ -14,7 +14,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.11.3@sha256:90bbb3c16635e9627f49eec6539f956d7
 COPY pyproject.toml uv.lock ./
 COPY README.md ./
 COPY src ./src
-RUN uv sync --locked --no-dev
+RUN uv sync --locked --no-dev --no-editable
 
 FROM python:3.13-slim@sha256:a0779d7c12fc20be6ec6b4ddc901a4fd7657b8a6bc9def9d3fde89ed5efe0a3d
 
@@ -34,5 +34,7 @@ COPY --from=builder /app/.venv /app/.venv
 COPY squid.conf /etc/squid/squid.conf
 COPY allowed-domains.txt /etc/mindroom-egress/allowed-domains.txt
 RUN squid -k parse -f /etc/squid/squid.conf
+
+USER 1000:1000
 
 CMD ["mindroom-egress-proxy"]
