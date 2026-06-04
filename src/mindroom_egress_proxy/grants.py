@@ -60,11 +60,7 @@ class GrantCreateRequest(BaseModel):
         return normalized
 
     @field_validator(
-        "agent_name",
-        "requester_id",
-        "room_id",
-        "thread_id",
-        "approved_by",
+        "agent_name", "requester_id", "room_id", "thread_id", "approved_by"
     )
     @classmethod
     def _normalize_optional_string(cls, value: str | None) -> str | None:
@@ -124,13 +120,13 @@ class GrantStore:
                     reason TEXT,
                     status TEXT NOT NULL
                 )
-                """,
+                """
             )
             connection.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_grants_check
                 ON grants(hostname, status, expires_at)
-                """,
+                """
             )
 
     def expire_old_grants(self, *, now: int | None = None) -> None:

@@ -54,9 +54,7 @@ class WorkerIdentity:
         """Fill derived identity fields for direct test or caller construction."""
         if self.agent_name is None:
             object.__setattr__(
-                self,
-                "agent_name",
-                worker_key_agent_name(self.worker_key),
+                self, "agent_name", worker_key_agent_name(self.worker_key)
             )
         if self.worker_scope is None:
             object.__setattr__(self, "worker_scope", worker_key_scope(self.worker_key))
@@ -116,8 +114,7 @@ class KubernetesWorkerResolver:
         if self.core_api is None or self.apps_api is None:
             return None
         pods = self.core_api.list_namespaced_pod(
-            namespace=self.namespace,
-            field_selector=f"status.podIP={source_ip}",
+            namespace=self.namespace, field_selector=f"status.podIP={source_ip}"
         )
         if not pods.items:
             return None
@@ -126,8 +123,7 @@ class KubernetesWorkerResolver:
         if not worker_id:
             return None
         deployment = self.apps_api.read_namespaced_deployment(
-            name=worker_id,
-            namespace=self.namespace,
+            name=worker_id, namespace=self.namespace
         )
         annotations = deployment.metadata.annotations or {}
         worker_key = annotations.get(WORKER_KEY_ANNOTATION)

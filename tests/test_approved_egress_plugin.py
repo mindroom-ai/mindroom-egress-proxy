@@ -26,11 +26,7 @@ def _install_stub_modules() -> None:
 
     class Function:
         def __init__(
-            self,
-            *,
-            name: str,
-            entrypoint: object,
-            description: str | None = None,
+            self, *, name: str, entrypoint: object, description: str | None = None
         ) -> None:
             self.name = name
             self.entrypoint = entrypoint
@@ -122,10 +118,8 @@ def test_request_network_access_skips_grant_when_static_allowed() -> None:
             tools._post_grant = post_grant
             result = asyncio.run(
                 tools.ApprovedEgressTools().request_network_access(
-                    "docs.example.com",
-                    5,
-                    "Need docs",
-                ),
+                    "docs.example.com", 5, "Need docs"
+                )
             )
         finally:
             tools._post_grant = old_post_grant
@@ -210,10 +204,8 @@ def test_request_network_access_posts_grant_to_fake_policy_api() -> None:
 
         result = asyncio.run(
             tools.ApprovedEgressTools().request_network_access(
-                "docs.example.com",
-                5,
-                "Need docs",
-            ),
+                "docs.example.com", 5, "Need docs"
+            )
         )
     finally:
         tools.get_tool_runtime_context = old_context
@@ -263,19 +255,13 @@ def test_shared_agent_requests_agent_scoped_grant() -> None:
     try:
         tools.get_tool_runtime_context = lambda: context
         tools._post_grant = lambda payload: (
-            captured.setdefault(
-                "payload",
-                payload,
-            )
-            or {"expires_at": 123}
+            captured.setdefault("payload", payload) or {"expires_at": 123}
         )
 
         asyncio.run(
             tools.ApprovedEgressTools().request_network_access(
-                "docs.example.com",
-                5,
-                "Need docs",
-            ),
+                "docs.example.com", 5, "Need docs"
+            )
         )
     finally:
         tools.get_tool_runtime_context = old_context
@@ -322,7 +308,6 @@ def test_policy_api_url_rejects_invalid_port() -> None:
     os.environ["MINDROOM_APPROVED_EGRESS_API_URL"] = "http://127.0.0.1:notaport"
 
     with pytest.raises(
-        RuntimeError,
-        match="MINDROOM_APPROVED_EGRESS_API_URL has an invalid port",
+        RuntimeError, match="MINDROOM_APPROVED_EGRESS_API_URL has an invalid port"
     ):
         tools._policy_api_url()

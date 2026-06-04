@@ -27,10 +27,7 @@ def _validation_error_message(exc: RequestValidationError) -> str:
 
 
 def create_policy_api_app(
-    *,
-    grant_store: GrantStore,
-    bearer_token: str,
-    max_ttl_seconds: int,
+    *, grant_store: GrantStore, bearer_token: str, max_ttl_seconds: int
 ) -> FastAPI:
     """Create the FastAPI policy API used by the MindRoom control plane."""
     app = FastAPI(
@@ -42,18 +39,15 @@ def create_policy_api_app(
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(
-        _request: Request,
-        exc: RequestValidationError,
+        _request: Request, exc: RequestValidationError
     ) -> JSONResponse:
         return _error_response(
-            HTTPStatus.BAD_REQUEST.value,
-            _validation_error_message(exc),
+            HTTPStatus.BAD_REQUEST.value, _validation_error_message(exc)
         )
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(
-        _request: Request,
-        exc: HTTPException,
+        _request: Request, exc: HTTPException
     ) -> JSONResponse:
         return _error_response(exc.status_code, str(exc.detail))
 
@@ -61,8 +55,7 @@ def create_policy_api_app(
         expected = f"Bearer {bearer_token}"
         if not bearer_token or authorization != expected:
             raise HTTPException(
-                status_code=HTTPStatus.UNAUTHORIZED.value,
-                detail="unauthorized",
+                status_code=HTTPStatus.UNAUTHORIZED.value, detail="unauthorized"
             )
 
     @app.get("/healthz")
@@ -77,8 +70,7 @@ def create_policy_api_app(
 
     @app.post("/grants", status_code=HTTPStatus.CREATED.value)
     def create_grant(
-        payload: GrantCreateRequest,
-        _authorized: None = Depends(require_authorization),
+        payload: GrantCreateRequest, _authorized: None = Depends(require_authorization)
     ) -> dict[str, Any]:
         try:
             ttl_seconds = min(payload.ttl_seconds, max_ttl_seconds)
@@ -96,8 +88,7 @@ def create_policy_api_app(
             )
         except Exception as exc:
             raise HTTPException(
-                status_code=HTTPStatus.BAD_REQUEST.value,
-                detail=str(exc),
+                status_code=HTTPStatus.BAD_REQUEST.value, detail=str(exc)
             ) from exc
         return {"ok": True, "grant": grant}
 

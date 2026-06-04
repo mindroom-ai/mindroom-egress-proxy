@@ -51,8 +51,7 @@ class TestHostnameValidation:
                 hostnames.canonical_hostname(value)
 
     def test_canonical_hostname_rejects_overlong_raw_name_before_idna(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         def fail_idna_encode(*_args, **_kwargs):
             raise AssertionError("IDNA encoding should not run for overlong input")
@@ -116,9 +115,7 @@ class TestHostnameValidation:
 
 class TestStaticAllowlist:
     def test_leading_dot_allows_domain_and_subdomains(self) -> None:
-        allowlist = StaticAllowlist.from_lines(
-            [".github.com", "exact.example.com"],
-        )
+        allowlist = StaticAllowlist.from_lines([".github.com", "exact.example.com"])
 
         assert allowlist.allows("github.com")
         assert allowlist.allows("api.github.com")
@@ -131,12 +128,7 @@ class TestSquidAclHelper:
     def test_squid_command_runs_with_config_in_foreground(self) -> None:
         settings = SimpleNamespace(squid_config_path="/tmp/squid.conf")
 
-        assert squid.squid_command(settings) == [
-            "squid",
-            "-N",
-            "-f",
-            "/tmp/squid.conf",
-        ]
+        assert squid.squid_command(settings) == ["squid", "-N", "-f", "/tmp/squid.conf"]
 
     def test_squid_acl_request_uses_source_host_and_port_for_policy(self) -> None:
         class Policy:
@@ -147,8 +139,7 @@ class TestSquidAclHelper:
         policy = Policy()
 
         result = squid.evaluate_squid_acl_request(
-            "10.4.0.12 Example.COM 443 CONNECT",
-            policy,
+            "10.4.0.12 Example.COM 443 CONNECT", policy
         )
 
         assert result == 'OK log="dynamic grant"'
@@ -160,8 +151,7 @@ class TestSquidAclHelper:
                 return False, "hostname is not approved for this worker", None
 
         result = squid.evaluate_squid_acl_request(
-            "10.4.0.12 example.com 443 CONNECT",
-            Policy(),
+            "10.4.0.12 example.com 443 CONNECT", Policy()
         )
 
         assert result == 'ERR message="hostname is not approved for this worker"'
@@ -189,7 +179,7 @@ class TestGrantRequestValidation:
                 "subject": "  v1:default:user_agent:@user:server:mind  ",
                 "ttl_seconds": 300,
                 "reason": "  Need\nexternal docs\x00now  ",
-            },
+            }
         )
 
         assert payload.hostname == "xn--fa-hia.de"
@@ -329,7 +319,7 @@ class TestWorkerKeyParsing:
         )
         assert (
             workers.worker_key_agent_name(
-                "v1:default:user_agent:@user:server:assistant",
+                "v1:default:user_agent:@user:server:assistant"
             )
             == "assistant"
         )
@@ -346,10 +336,10 @@ class TestKubernetesWorkerResolver:
                     items=[
                         SimpleNamespace(
                             metadata=SimpleNamespace(
-                                labels={WORKER_ID_LABEL: "worker-deployment"},
-                            ),
-                        ),
-                    ],
+                                labels={WORKER_ID_LABEL: "worker-deployment"}
+                            )
+                        )
+                    ]
                 )
 
         class AppsApi:
@@ -361,17 +351,15 @@ class TestKubernetesWorkerResolver:
                         annotations={
                             WORKER_KEY_ANNOTATION: (
                                 "v1:default:user_agent:@user:server:assistant"
-                            ),
-                        },
-                    ),
+                            )
+                        }
+                    )
                 )
 
         core_api = CoreApi()
         apps_api = AppsApi()
         resolver = workers.KubernetesWorkerResolver(
-            namespace="default",
-            core_api=core_api,
-            apps_api=apps_api,
+            namespace="default", core_api=core_api, apps_api=apps_api
         )
 
         identity = resolver.resolve("10.0.0.10")
@@ -391,10 +379,10 @@ class TestKubernetesWorkerResolver:
                     items=[
                         SimpleNamespace(
                             metadata=SimpleNamespace(
-                                labels={WORKER_ID_LABEL: self.worker_id},
-                            ),
-                        ),
-                    ],
+                                labels={WORKER_ID_LABEL: self.worker_id}
+                            )
+                        )
+                    ]
                 )
 
         class AppsApi:
@@ -405,15 +393,13 @@ class TestKubernetesWorkerResolver:
                 }
                 return SimpleNamespace(
                     metadata=SimpleNamespace(
-                        annotations={WORKER_KEY_ANNOTATION: worker_keys[name]},
-                    ),
+                        annotations={WORKER_KEY_ANNOTATION: worker_keys[name]}
+                    )
                 )
 
         core_api = CoreApi()
         resolver = workers.KubernetesWorkerResolver(
-            namespace="default",
-            core_api=core_api,
-            apps_api=AppsApi(),
+            namespace="default", core_api=core_api, apps_api=AppsApi()
         )
 
         first = resolver.resolve("10.0.0.10")
@@ -431,9 +417,7 @@ class TestPolicyApi:
         with tempfile.TemporaryDirectory() as tmpdir:
             store = grants.GrantStore(Path(tmpdir) / "grants.sqlite3")
             app = api.create_policy_api_app(
-                grant_store=store,
-                bearer_token="token",
-                max_ttl_seconds=60,
+                grant_store=store, bearer_token="token", max_ttl_seconds=60
             )
             client = TestClient(app)
 

@@ -15,7 +15,7 @@ from mindroom_egress_proxy.squid import run_squid_acl_helper
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="MindRoom approved egress policy service",
+        description="MindRoom approved egress policy service"
     )
     parser.add_argument("mode", nargs="?", choices=("serve", "helper"), default="serve")
     return parser.parse_args(argv)
