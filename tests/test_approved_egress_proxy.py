@@ -125,6 +125,16 @@ class TestStaticAllowlist:
 
 
 class TestSquidAclHelper:
+    def test_squid_acl_helper_receives_client_request_hostname(self) -> None:
+        config = Path("squid.conf").read_text(encoding="utf-8")
+
+        assert (
+            "external_acl_type approved_egress ttl=0 negative_ttl=0 "
+            "children-startup=1 children-max=4 "
+            "%>a %>rd %>rP %>rm "
+            "/app/.venv/bin/mindroom-egress-proxy helper"
+        ) in config
+
     def test_squid_command_runs_with_config_in_foreground(self) -> None:
         settings = SimpleNamespace(squid_config_path="/tmp/squid.conf")
 
