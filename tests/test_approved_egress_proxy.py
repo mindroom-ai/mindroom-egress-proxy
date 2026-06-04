@@ -53,7 +53,7 @@ class TestHostnameValidation:
             "192.168.1.1",
             "169.254.169.254",
         ):
-             assert egress.is_forbidden_resolved_address(value)
+            assert egress.is_forbidden_resolved_address(value)
         assert not egress.is_forbidden_resolved_address("8.8.8.8")
 
     def test_public_resolved_addresses_rejects_mixed_private_results(self) -> None:

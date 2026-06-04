@@ -103,8 +103,11 @@ curl -sS "http://localhost:8080/healthz"
 
 ```bash
 uv sync
+uv run pre-commit install
+uv run ruff format .
 uv run ruff check .
-uv run python -m unittest -v
+uv run pytest
+uv build
 ```
 
 Build image:
@@ -112,6 +115,9 @@ Build image:
 ```bash
 docker build -t mindroom-egress-proxy:local .
 ```
+
+Tag releases publish the container image to GHCR and upload Python package
+artifacts to the matching GitHub release.
 
 ## Deployment Boundary
 
