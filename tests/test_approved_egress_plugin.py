@@ -308,6 +308,18 @@ def test_policy_api_url_rejects_invalid_port() -> None:
     os.environ["MINDROOM_APPROVED_EGRESS_API_URL"] = "http://127.0.0.1:notaport"
 
     with pytest.raises(
-        RuntimeError, match="MINDROOM_APPROVED_EGRESS_API_URL has an invalid port"
+        RuntimeError,
+        match="MINDROOM_APPROVED_EGRESS_API_URL has an invalid host or port",
+    ):
+        tools._policy_api_url()
+
+
+def test_policy_api_url_rejects_malformed_bracketed_host() -> None:
+    tools = _load_tools_module()
+    os.environ["MINDROOM_APPROVED_EGRESS_API_URL"] = "http://[::1::1]/"
+
+    with pytest.raises(
+        RuntimeError,
+        match="MINDROOM_APPROVED_EGRESS_API_URL has an invalid host or port",
     ):
         tools._policy_api_url()

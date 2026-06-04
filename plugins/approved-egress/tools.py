@@ -182,14 +182,18 @@ def _policy_api_url() -> str:
         .strip()
         .rstrip("/")
     )
-    parsed = parse.urlsplit(url)
     try:
+        parsed = parse.urlsplit(url)
         hostname = parsed.hostname or ""
-        _port = parsed.port
+        port = parsed.port
     except ValueError as exc:
         raise RuntimeError(
-            "MINDROOM_APPROVED_EGRESS_API_URL has an invalid port"
+            "MINDROOM_APPROVED_EGRESS_API_URL has an invalid host or port"
         ) from exc
+    if port is not None and not isinstance(port, int):
+        raise RuntimeError(
+            "MINDROOM_APPROVED_EGRESS_API_URL has an invalid host or port"
+        )
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise RuntimeError(
             "MINDROOM_APPROVED_EGRESS_API_URL must be an http or https URL"
