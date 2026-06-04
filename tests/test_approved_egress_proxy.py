@@ -12,6 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import mindroom_egress_proxy.server as egress
+from mindroom_egress_proxy import hostnames
 
 
 class TestHostnameValidation:
@@ -57,13 +58,13 @@ class TestHostnameValidation:
         assert not egress.is_forbidden_resolved_address("8.8.8.8")
 
     def test_public_resolved_addresses_rejects_mixed_private_results(self) -> None:
-        original = egress._resolved_addresses
+        original = hostnames._resolved_addresses
         try:
-            egress._resolved_addresses = lambda hostname: {"8.8.8.8", "10.0.0.5"}
+            hostnames._resolved_addresses = lambda hostname: {"8.8.8.8", "10.0.0.5"}
             with pytest.raises(egress.PolicyError):
                 egress._public_resolved_addresses("example.com")
         finally:
-            egress._resolved_addresses = original
+            hostnames._resolved_addresses = original
 
     def test_reason_values_are_normalized_and_limited(self) -> None:
         reason = "  Need\n\tAPI docs\x00for validation  " + ("x" * 600)

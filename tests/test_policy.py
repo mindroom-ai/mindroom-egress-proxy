@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 
 import mindroom_egress_proxy.server as egress
+from mindroom_egress_proxy import hostnames
 
 
 class NoWorkerResolver:
@@ -23,7 +24,7 @@ def test_policy_allows_static_allowlist_without_worker_identity(
     tmp_path,
 ) -> None:
     monkeypatch.setattr(
-        egress,
+        hostnames,
         "_resolved_addresses",
         lambda _hostname: {"93.184.216.34"},
     )
@@ -49,7 +50,7 @@ def test_policy_allows_dynamic_grant_for_resolved_worker(
     tmp_path,
 ) -> None:
     monkeypatch.setattr(
-        egress,
+        hostnames,
         "_resolved_addresses",
         lambda _hostname: {"93.184.216.34"},
     )
@@ -92,7 +93,7 @@ def test_policy_denies_dynamic_hostname_when_worker_identity_is_missing(
     tmp_path,
 ) -> None:
     monkeypatch.setattr(
-        egress,
+        hostnames,
         "_resolved_addresses",
         lambda _hostname: {"93.184.216.34"},
     )
