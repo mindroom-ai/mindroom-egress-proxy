@@ -65,8 +65,9 @@ Configure the MindRoom runtime with:
 - optional `MINDROOM_APPROVED_EGRESS_ALLOWLIST`
 - optional `MINDROOM_APPROVED_EGRESS_MAX_TTL_SECONDS`
 
-If a requested hostname already matches the configured static allowlist, the
-tool reports that no dynamic grant is needed and does not call the policy API.
+The tool skips a dynamic grant for each requested hostname already covered by
+the static allowlist. If all requested hostnames are covered, it reports that
+no dynamic grant is needed and does not call the policy API.
 For private per-user agents it creates exact `worker_key` grants. For shared
 agents it creates `agent` grants, which the proxy honors only for shared or
 unscoped worker identities.
