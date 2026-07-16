@@ -51,8 +51,6 @@ jobs:
           SETUPTOOLS_SCM_PRETEND_VERSION: ${{ steps.package-version.outputs.version }}
           SETUPTOOLS_SCM_PRETEND_VERSION_FOR_MINDROOM_APPROVED_EGRESS_PROXY: ${{ steps.package-version.outputs.version }}
         run: uv build
-      - name: Build plugin artifact
-        run: make plugin-artifact PLUGIN_ARTIFACT_VERSION=${{ steps.package-version.outputs.version }}
       - name: Upload package artifacts to release
         if: startsWith(github.ref, 'refs/tags/')
         env:

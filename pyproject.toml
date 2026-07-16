@@ -76,13 +76,6 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"plugins/approved-egress/tools.py" = [
-    # MindRoom plugins are loaded from standalone directories, not packages.
-    "INP001",
-    # The single hostname validator is easier to audit than tiny split helpers.
-    "C901",
-    "PLR0912",
-]
 "tests/test_*.py" = [
     # Test names already document behavior; method/class docstrings add noise.
     "D",
