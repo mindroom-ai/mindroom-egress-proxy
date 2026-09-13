@@ -1,5 +1,10 @@
 # MindRoom Egress Proxy
 
+<picture>
+  <source media="(prefers-reduced-motion: no-preference)" srcset="https://raw.githubusercontent.com/mindroom-ai/mindroom/main/assets/logo/logo-mark-animated.svg" />
+  <img src="https://raw.githubusercontent.com/mindroom-ai/mindroom/main/assets/logo/logo-mark.svg" alt="MindRoom Logo" align="right" width="120" />
+</picture>
+
 Network firewall and approval proxy for MindRoom worker environments.
 
 MindRoom agents often need tools that can read docs, install packages, call
