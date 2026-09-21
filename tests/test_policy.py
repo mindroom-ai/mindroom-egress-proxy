@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import time
 
+import pytest
+
 from mindroom_egress_proxy import hostnames
 from mindroom_egress_proxy.grants import GrantStore
 from mindroom_egress_proxy.policy import EgressPolicy, StaticAllowlist
@@ -287,3 +289,68 @@ def test_all_public_grant_does_not_allow_unknown_worker(monkeypatch, tmp_path) -
     assert not allowed
     assert reason == "worker identity could not be resolved"
     assert connect_address is None
+
+
+@pytest.mark.parametrize(
+    ("worker_key", "agent_name", "expected_result"),
+    [
+        (
+            "v1:default:shared:assistant",
+            "assistant",
+            (True, "dynamic grant", "93.184.216.34"),
+        ),
+        (
+            "v1:default:unscoped:assistant",
+            "assistant",
+            (True, "dynamic grant", "93.184.216.34"),
+        ),
+        (
+            "v1:default:user_agent:@user:server:assistant",
+            "assistant",
+            (False, "hostname is not approved for this worker", None),
+        ),
+        (
+            "v1:default:shared:other",
+            "other",
+            (False, "hostname is not approved for this worker", None),
+        ),
+    ],
+    ids=["shared", "unscoped", "private", "wrong-agent"],
+)
+def test_all_public_agent_grant_respects_worker_scope_and_agent(
+    monkeypatch,
+    tmp_path,
+    worker_key: str,
+    agent_name: str,
+    expected_result: tuple[bool, str, str | None],
+) -> None:
+    monkeypatch.setattr(
+        hostnames, "_resolved_addresses", lambda _hostname: {"93.184.216.34"}
+    )
+    store = GrantStore(tmp_path / "grants.sqlite3")
+    store.create_grant(
+        hostname="*",
+        subject_type="agent",
+        subject="assistant",
+        agent_name="assistant",
+        requester_id="@user:server",
+        room_id="!room:server",
+        thread_id=None,
+        ttl_seconds=300,
+        approved_by="@user:server",
+        reason="Need temporary public access",
+        now=int(time.time()),
+    )
+    policy = EgressPolicy(
+        static_allowlist=StaticAllowlist.from_lines([]),
+        grant_store=store,
+        worker_resolver=StaticWorkerResolver(
+            WorkerIdentity(worker_key=worker_key, agent_name=agent_name)
+        ),
+    )
+
+    result = policy.is_allowed(
+        source_ip="10.0.0.12", hostname="docs.example.com", port=443
+    )
+
+    assert result == expected_result
