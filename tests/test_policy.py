@@ -172,3 +172,118 @@ def test_policy_denies_dynamic_hostname_when_worker_identity_is_missing(
     assert not allowed
     assert reason == "worker identity could not be resolved"
     assert connect_address is None
+
+
+def _create_all_public_grant(store: GrantStore, worker_key: str) -> None:
+    store.create_grant(
+        hostname="*",
+        subject_type="worker_key",
+        subject=worker_key,
+        agent_name="assistant",
+        requester_id="@user:server",
+        room_id="!room:server",
+        thread_id=None,
+        ttl_seconds=300,
+        approved_by="@user:server",
+        reason="Need temporary public access",
+        now=int(time.time()),
+    )
+
+
+def test_all_public_grant_allows_public_host_for_scoped_worker(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setattr(
+        hostnames, "_resolved_addresses", lambda _hostname: {"93.184.216.34"}
+    )
+    worker_key = "v1:default:user_agent:@user:server:assistant"
+    store = GrantStore(tmp_path / "grants.sqlite3")
+    _create_all_public_grant(store, worker_key)
+    policy = EgressPolicy(
+        static_allowlist=StaticAllowlist.from_lines([]),
+        grant_store=store,
+        worker_resolver=StaticWorkerResolver(
+            WorkerIdentity(worker_key=worker_key, agent_name="assistant")
+        ),
+    )
+
+    allowed, reason, connect_address = policy.is_allowed(
+        source_ip="10.0.0.12", hostname="docs.example.com", port=443
+    )
+
+    assert allowed
+    assert reason == "dynamic grant"
+    assert connect_address == "93.184.216.34"
+
+
+def test_all_public_grant_does_not_allow_private_addresses(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setattr(
+        hostnames, "_resolved_addresses", lambda _hostname: {"10.0.0.5"}
+    )
+    worker_key = "v1:default:user_agent:@user:server:assistant"
+    store = GrantStore(tmp_path / "grants.sqlite3")
+    _create_all_public_grant(store, worker_key)
+    policy = EgressPolicy(
+        static_allowlist=StaticAllowlist.from_lines([]),
+        grant_store=store,
+        worker_resolver=StaticWorkerResolver(
+            WorkerIdentity(worker_key=worker_key, agent_name="assistant")
+        ),
+    )
+
+    allowed, reason, connect_address = policy.is_allowed(
+        source_ip="10.0.0.12", hostname="private.example.com", port=443
+    )
+
+    assert not allowed
+    assert reason == "hostname resolved to a forbidden address range"
+    assert connect_address is None
+
+
+def test_all_public_grant_does_not_allow_unsupported_ports(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setattr(
+        hostnames, "_resolved_addresses", lambda _hostname: {"93.184.216.34"}
+    )
+    worker_key = "v1:default:user_agent:@user:server:assistant"
+    store = GrantStore(tmp_path / "grants.sqlite3")
+    _create_all_public_grant(store, worker_key)
+    policy = EgressPolicy(
+        static_allowlist=StaticAllowlist.from_lines([]),
+        grant_store=store,
+        worker_resolver=StaticWorkerResolver(
+            WorkerIdentity(worker_key=worker_key, agent_name="assistant")
+        ),
+    )
+
+    allowed, reason, connect_address = policy.is_allowed(
+        source_ip="10.0.0.12", hostname="docs.example.com", port=22
+    )
+
+    assert not allowed
+    assert reason == "port is not allowed"
+    assert connect_address is None
+
+
+def test_all_public_grant_does_not_allow_unknown_worker(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(
+        hostnames, "_resolved_addresses", lambda _hostname: {"93.184.216.34"}
+    )
+    store = GrantStore(tmp_path / "grants.sqlite3")
+    _create_all_public_grant(store, "v1:default:user_agent:@user:server:assistant")
+    policy = EgressPolicy(
+        static_allowlist=StaticAllowlist.from_lines([]),
+        grant_store=store,
+        worker_resolver=NoWorkerResolver(),
+    )
+
+    allowed, reason, connect_address = policy.is_allowed(
+        source_ip="10.0.0.12", hostname="docs.example.com", port=443
+    )
+
+    assert not allowed
+    assert reason == "worker identity could not be resolved"
+    assert connect_address is None

@@ -83,6 +83,13 @@ def canonical_hostname(value: str) -> str:
     return normalized
 
 
+def canonical_grant_target(value: str) -> str:
+    """Return an exact hostname or the all-public-hostnames grant sentinel."""
+    if isinstance(value, str) and value.strip() == "*":
+        return "*"
+    return canonical_hostname(value)
+
+
 def is_forbidden_resolved_address(value: str) -> bool:
     """Return whether a resolved address is forbidden for dynamic grants."""
     try:
