@@ -15,7 +15,7 @@ At a high level, it provides:
 
 - a default-deny proxy for worker HTTP and HTTPS traffic
 - a static allowlist for destinations that are always permitted
-- temporary, human-approved grants for blocked hostnames
+- temporary, human-approved grants for exact hostnames or all public hostnames
 - DNS and private-address checks so approved hostnames cannot point back into
   cluster-local, metadata, loopback, or private networks
 
@@ -36,6 +36,8 @@ policy service for temporary dynamic grants. Squid allows traffic when either:
 The proxy fails closed for malformed helper requests, unsupported ports,
 internal hostnames, private or metadata address ranges, and unresolved worker
 identity.
+An all-public-hostnames grant changes only hostname matching.
+It does not bypass the existing DNS, address-range, port, or worker-identity checks.
 
 ## MindRoom Approval Flow
 
@@ -76,6 +78,7 @@ no dynamic grant is needed and does not call the policy API.
 For private per-user agents it creates exact `worker_key` grants. For shared
 agents it creates `agent` grants, which the proxy honors only for shared or
 unscoped worker identities.
+The toolkit can also request a timed all-public-hostnames grant by posting the exact `*` sentinel as the hostname.
 
 ## Runtime
 
@@ -113,6 +116,12 @@ curl -sS -X POST "http://localhost:8080/grants" \
     "reason": "Need documentation"
   }'
 ```
+
+Set `hostname` to the exact `*` sentinel to grant the same subject access to all public hostnames for the effective TTL.
+Partial wildcard values such as `*.example.com` are rejected.
+These grants remain limited to HTTP and HTTPS ports and still reject internal names, private or metadata addresses, DNS failures, and unresolved workers.
+Expiration prevents new requests from being authorized at the deadline.
+An HTTP CONNECT tunnel established before expiration is not forcibly closed and continues until the tunnel otherwise ends.
 
 List active grants:
 

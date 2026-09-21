@@ -13,7 +13,11 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from mindroom_egress_proxy.hostnames import canonical_hostname, normalize_reason
+from mindroom_egress_proxy.hostnames import (
+    canonical_grant_target,
+    canonical_hostname,
+    normalize_reason,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -49,7 +53,7 @@ class GrantCreateRequest(BaseModel):
     @field_validator("hostname")
     @classmethod
     def _normalize_hostname(cls, value: str) -> str:
-        return canonical_hostname(value)
+        return canonical_grant_target(value)
 
     @field_validator("subject")
     @classmethod
@@ -156,7 +160,7 @@ class GrantStore:
         reason: str | None,
         now: int | None = None,
     ) -> dict[str, Any]:
-        host = canonical_hostname(hostname)
+        host = canonical_grant_target(hostname)
         if subject_type not in {"worker_key", "agent"}:
             raise ValueError("subject_type must be 'worker_key' or 'agent'")
         normalized_subject = subject.strip() if isinstance(subject, str) else ""
@@ -243,7 +247,9 @@ class GrantStore:
                 """
                 SELECT subject_type, subject
                 FROM grants
-                WHERE hostname = ? AND status = 'active' AND expires_at > ?
+                WHERE hostname IN (?, '*')
+                  AND status = 'active'
+                  AND expires_at > ?
                 """,
                 (host, timestamp),
             ).fetchall()

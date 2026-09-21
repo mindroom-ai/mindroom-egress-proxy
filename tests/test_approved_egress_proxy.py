@@ -50,6 +50,19 @@ class TestHostnameValidation:
             with pytest.raises(ValueError):
                 hostnames.canonical_hostname(value)
 
+    def test_grant_target_accepts_only_the_all_public_sentinel_or_exact_host(
+        self,
+    ) -> None:
+        assert hostnames.canonical_grant_target("*") == "*"
+        assert hostnames.canonical_grant_target("GitHub.COM.") == "github.com"
+
+        for value in ("*.example.com", "api.*.example.com", "example.*"):
+            with pytest.raises(ValueError):
+                hostnames.canonical_grant_target(value)
+
+        with pytest.raises(ValueError):
+            hostnames.canonical_hostname("*")
+
     def test_canonical_hostname_rejects_overlong_raw_name_before_idna(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -321,6 +334,48 @@ class TestGrantStore:
                 now=now + 11,
             )
 
+    def test_all_public_grant_persists_scope_and_expires_at_deadline(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            database_path = Path(tmpdir) / "grants.sqlite3"
+            worker_key = "v1:default:user_agent:@user:server:assistant"
+            store = grants.GrantStore(database_path)
+            grant = store.create_grant(
+                hostname="*",
+                subject_type="worker_key",
+                subject=worker_key,
+                agent_name="assistant",
+                requester_id="@user:server",
+                room_id="!room:server",
+                thread_id=None,
+                ttl_seconds=10,
+                approved_by="@user:server",
+                reason="Need temporary public access",
+                now=100,
+            )
+
+            reopened_store = grants.GrantStore(database_path)
+
+            assert grant["hostname"] == "*"
+            assert reopened_store.has_grant(
+                "docs.example.com",
+                worker_key=worker_key,
+                agent_name="assistant",
+                now=109,
+            )
+            assert not reopened_store.has_grant(
+                "docs.example.com",
+                worker_key="v1:default:user_agent:@other:server:assistant",
+                agent_name="assistant",
+                now=109,
+            )
+            assert not reopened_store.has_grant(
+                "docs.example.com",
+                worker_key=worker_key,
+                agent_name="assistant",
+                now=110,
+            )
+            assert grants.GrantStore(database_path).list_active_grants(now=110) == []
+
 
 class TestWorkerKeyParsing:
     def test_worker_key_agent_name_parses_shared_and_user_agent_scopes(self) -> None:
@@ -464,3 +519,34 @@ class TestPolicyApi:
             )
             assert invalid.status_code == 400
             assert invalid.json()["ok"] is False
+
+    def test_policy_api_authenticates_and_caps_all_public_grants(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = grants.GrantStore(Path(tmpdir) / "grants.sqlite3")
+            app = api.create_policy_api_app(
+                grant_store=store, bearer_token="token", max_ttl_seconds=60
+            )
+            client = TestClient(app)
+            payload = {
+                "hostname": "*",
+                "subject_type": "worker_key",
+                "subject": "v1:default:user_agent:@user:server:assistant",
+                "ttl_seconds": 600,
+                "reason": "Need temporary public access",
+            }
+
+            unauthorized = client.post("/grants", json=payload)
+            response = client.post(
+                "/grants", headers={"authorization": "Bearer token"}, json=payload
+            )
+            partial_wildcard = client.post(
+                "/grants",
+                headers={"authorization": "Bearer token"},
+                json={**payload, "hostname": "*.example.com"},
+            )
+
+            assert unauthorized.status_code == 401
+            assert response.status_code == 201
+            assert response.json()["grant"]["hostname"] == "*"
+            assert response.json()["grant"]["effective_ttl_seconds"] == 60
+            assert partial_wildcard.status_code == 400
