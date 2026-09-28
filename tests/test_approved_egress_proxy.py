@@ -148,6 +148,20 @@ class TestSquidAclHelper:
             "/app/.venv/bin/mindroom-egress-proxy helper"
         ) in config
 
+    def test_connect_reaches_http_and_https_behind_allowlists(self) -> None:
+        lines = Path("squid.conf").read_text(encoding="utf-8").splitlines()
+        access = [line for line in lines if line.startswith("http_access")]
+
+        assert "acl CONNECT_ports port 80 443" in lines
+        assert access == [
+            "http_access deny !Safe_ports",
+            "http_access deny CONNECT !CONNECT_ports",
+            "http_access deny forbidden_dst",
+            "http_access allow approved_static Safe_ports",
+            "http_access allow approved_dynamic Safe_ports",
+            "http_access deny all",
+        ]
+
     def test_squid_command_runs_with_config_in_foreground(self) -> None:
         settings = SimpleNamespace(squid_config_path="/tmp/squid.conf")
 

@@ -36,6 +36,9 @@ policy service for temporary dynamic grants. Squid allows traffic when either:
 The proxy fails closed for malformed helper requests, unsupported ports,
 internal hostnames, private or metadata address ranges, and unresolved worker
 identity.
+CONNECT tunnels may reach ports 80 and 443, so clients that tunnel plain HTTP
+through CONNECT, such as a browser behind a SOCKS relay, pass the same
+hostname and address checks as ordinary proxied requests.
 An all-public-hostnames grant changes only hostname matching.
 It does not bypass the existing DNS, address-range, port, or worker-identity checks.
 
