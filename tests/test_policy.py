@@ -176,6 +176,35 @@ def test_policy_denies_dynamic_hostname_when_worker_identity_is_missing(
     assert connect_address is None
 
 
+def test_policy_denies_unapproved_hostname_without_resolving_it(
+    monkeypatch, tmp_path
+) -> None:
+    lookups: list[str] = []
+
+    def record_lookup(hostname: str) -> set[str]:
+        lookups.append(hostname)
+        return {"93.184.216.34"}
+
+    monkeypatch.setattr(hostnames, "_resolved_addresses", record_lookup)
+    policy = EgressPolicy(
+        static_allowlist=StaticAllowlist.from_lines([]),
+        grant_store=GrantStore(tmp_path / "grants.sqlite3"),
+        worker_resolver=StaticWorkerResolver(
+            WorkerIdentity(
+                worker_key="v1:default:user_agent:@user:server:assistant",
+                agent_name="assistant",
+            )
+        ),
+    )
+
+    result = policy.is_allowed(
+        source_ip="10.0.0.12", hostname="docs.example.com", port=443
+    )
+
+    assert result == (False, "hostname is not approved for this worker", None)
+    assert lookups == []
+
+
 def _create_all_public_grant(store: GrantStore, worker_key: str) -> None:
     store.create_grant(
         hostname="*",
