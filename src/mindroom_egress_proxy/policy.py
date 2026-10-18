@@ -77,22 +77,26 @@ class EgressPolicy:
             return False, "port is not allowed", None
         try:
             host = canonical_hostname(hostname)
+        except ValueError as exc:
+            return False, str(exc), None
+        if self.static_allowlist.allows(host):
+            reason = "static allowlist"
+        else:
+            identity = self.worker_resolver.resolve(source_ip)
+            if identity is None:
+                return False, "worker identity could not be resolved", None
+            if not self.grant_store.has_grant(
+                host,
+                worker_key=identity.worker_key,
+                agent_name=identity.agent_name,
+                allow_agent_grants=identity.worker_scope in {"shared", "unscoped"},
+            ):
+                return False, "hostname is not approved for this worker", None
+            reason = "dynamic grant"
+        # Resolve only approved hostnames so a slow lookup for a denied
+        # request does not hold one of Squid's few helper processes.
+        try:
             addresses = _public_resolved_addresses(host)
         except (OSError, ValueError, PolicyError) as exc:
             return False, str(exc), None
-        try:
-            if self.static_allowlist.allows(host):
-                return True, "static allowlist", addresses[0]
-        except ValueError as exc:
-            return False, str(exc), None
-        identity = self.worker_resolver.resolve(source_ip)
-        if identity is None:
-            return False, "worker identity could not be resolved", None
-        if self.grant_store.has_grant(
-            host,
-            worker_key=identity.worker_key,
-            agent_name=identity.agent_name,
-            allow_agent_grants=identity.worker_scope in {"shared", "unscoped"},
-        ):
-            return True, "dynamic grant", addresses[0]
-        return False, "hostname is not approved for this worker", None
+        return True, reason, addresses[0]
